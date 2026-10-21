@@ -10,7 +10,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | `inicio.php` | Portada (`/`) | `$carta` |
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
-| `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form` |
+| `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form`, `$cancelar_form` |
 
 Todas reciben también `$s` (los ajustes del restaurante) y `$cliente` (el cliente con sesión, o `null`).
 
@@ -48,7 +48,7 @@ El resto es libre: `partes.php` (cabecera y pie compartidos), `assets/` (CSS, JS
 
 ## Datos del restaurante: `$s`
 
-`name`, `tagline` (frase corta), `description` (presentación), `address`, `city`, `phone`, `whatsapp`, `email`, `instagram`, `facebook`, `tiktok`, `tripadvisor`, `maps_url`, `ribbon` (frases destacadas, separadas por comas), `footer_title`, `hours`, `closed_dates`, `late_minutes`, `policies`, `max_people`, `days_ahead`, `owner_name`, `owner_nif`.
+`name`, `tagline` (frase corta), `description` (presentación), `address`, `city`, `phone`, `whatsapp`, `email`, `instagram`, `facebook`, `tiktok`, `tripadvisor`, `maps_url`, `ribbon` (frases destacadas, separadas por comas), `footer_title`, `hours`, `kitchen_on`, `kitchen_hours`, `closed_dates`, `late_minutes`, `policies`, `max_people`, `days_ahead`, `owner_name`, `owner_nif`.
 
 Imprime siempre con `h()`: `<?= h($s['name']) ?>`.
 
@@ -61,7 +61,7 @@ Imprime siempre con `h()`: `<?= h($s['name']) ?>`.
 | `photo_img('portada', 1200, '100vw')` | `<img>` completo con `srcset` y `alt` |
 | `photo('portada', 1200)` / `photo_abs(...)` | Solo la dirección de la foto (relativa / completa) |
 | `photo_credits()` | Autores de las fotos de ejemplo que siguen puestas (para el pie) |
-| `horario()` | `[['dia' => 'Lunes', 'texto' => '13:00–16:00', 'hoy' => bool], …]` |
+| `horario()` | `[['dia' => 'Lunes', 'texto' => '13:00–16:00', 'cocina' => '13:30–15:30' o '', 'hoy' => bool], …]` (`cocina` solo si hay horario de cocina y es distinto) |
 | `horario_hoy()` | Horario de hoy, `'Cerrado'` o `'Cerrado hoy'` |
 | `politicas()` | `[['titulo' => 'Grupos', 'texto' => '…'], …]` |
 | `redes()` | `['Instagram' => url, …]` (solo las configuradas) |
@@ -99,6 +99,8 @@ Cada hueco aparece en la app (Ajustes → Fotos de la web) con su `label` para q
 ## Confirmar la reserva: el botón es obligatorio
 
 Abrir el enlace del WhatsApp **no confirma** la reserva: WhatsApp, Telegram y los antivirus del correo abren los enlaces solos para hacer la vista previa, y confirmarían reservas sin que nadie las viera. Cuando `$pendiente` es `true`, la página tiene que mostrar los datos y el botón que pinta `<?= $confirmar_form('Confirmar mi reserva', 'mi-clase-de-boton') ?>`. La reserva se confirma cuando el cliente lo pulsa.
+
+Pon también `<?= $cancelar_form('Cancelar la reserva', 'mi-clase') ?>`: deja al cliente cancelar desde el mismo enlace, mientras la reserva está pendiente o confirmada. Después la página muestra «Reserva cancelada» (en `$error`), y lo mismo si el restaurante la cancela o la borra desde el panel.
 
 ## Reservar: `data-book`
 

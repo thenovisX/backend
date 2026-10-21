@@ -33,10 +33,15 @@ Límite: 5 reservas por hora desde la misma conexión. `website` es un campo tra
 
 ## Gestión (app; cabecera `X-Token`, que se obtiene con `login`)
 
+Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permisos: `reservas` (estado, guardar, borrar y cerrar días), `carta` (secciones y platos) y `ajustes` (ajustes, fotos y email de prueba). El administrador los tiene todos y gestiona los usuarios. Sin permiso, la API responde 403.
+
 | Ruta | Método | Datos |
 |---|---|---|
-| `login` | POST | `username`, `password` → `token` |
+| `login` | POST | `username`, `password` → `token` y `me` (rol y permisos) |
 | `logout`, `me` | POST / GET | — |
+| `users` | GET | (administrador) lista de usuarios y permisos posibles |
+| `user_save` | POST | (administrador) `id`?, `username`, `name`, `password`?, `role` (`admin` o `staff`), `perms` (`reservas`, `carta`, `ajustes`), `active` |
+| `user_delete` | POST | (administrador) `id` |
 | `reservations&from=&to=` | GET | reservas entre dos fechas |
 | `requests` | GET | `nuevas` y `esperando` |
 | `month&month=AAAA-MM` | GET | resumen por día |
@@ -44,7 +49,7 @@ Límite: 5 reservas por hora desde la misma conexión. `website` es un campo tra
 | `slots_admin&date=` | GET | plazas sin las reglas de antelación |
 | `reservation_status` | POST | `id`, `status` (`esperando`, `confirmada`, `rechazada`, `cancelada`) |
 | `reservation_save` | POST | `id`? y los datos de la reserva |
-| `reservation_delete` | POST | `id` |
+| `reservation_delete` | POST | `id` (desaparece de la app; el enlace del cliente dirá «cancelada») |
 | `admin_menu` | GET | carta completa, también lo agotado |
 | `category_save`, `category_move`, `category_delete` | POST | `id`, `name` / `dir` |
 | `dish_save` | POST multipart | `id`?, `name`, `price`, `category_id`, `description`, `allergens` (separados por comas), `available`, `featured`, `photo` (archivo), `remove_photo` |

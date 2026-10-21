@@ -5,7 +5,9 @@ Base reutilizable para hacer la web de un restaurante. Para cada cliente solo ha
 - **Reservas** en 3 pasos con confirmación por WhatsApp, aforo con tiempo de mesa (una reserva a las 14:00 con 90 min ocupa sitio hasta las 15:30), días cerrados y antelación mínima.
 - **Cuentas de clientes** con activación por email, historial, cancelación gratis, descarga y borrado de datos.
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
-- **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes.
+- **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes con buscador.
+- **Usuarios con permisos**: el administrador crea usuarios (por ejemplo, camareros que solo ven las reservas) y decide si pueden gestionar reservas, cambiar la carta o los ajustes.
+- **Horario de cocina** opcional: las reservas se ofrecen solo con la cocina abierta y la web lo muestra bajo el horario.
 - **Emails** desde el hosting o desde Gmail.
 - **Legal**: aviso legal, condiciones, privacidad y cookies (RGPD, LOPDGDD, LSSI y guía de la AEPD, revisados en octubre de 2026). Aviso de cookies con Google Analytics, Tag Manager y el píxel de Meta solo con consentimiento.
 - **SEO** (descripción, datos estructurados, sitemap, Search Console) e **instalable como app** (PWA).
@@ -95,8 +97,11 @@ Sirve igual para el correo de Hostinger (smtp.hostinger.com, puerto 465).
 
 1. El cliente reserva en la web (teléfono obligatorio, email opcional). Ve «Petición realizada».
 2. En la app aparece en **Peticiones**. Al pulsar **Confirmar por WhatsApp** se abre WhatsApp con el mensaje y el enlace.
-3. Cuando el cliente abre el enlace, la reserva queda **confirmada** y la app avisa.
-4. Si el cliente puso email o tiene cuenta, recibe también los avisos por email.
+3. El cliente abre el enlace, ve sus datos y pulsa **Confirmar mi reserva** (abrir el enlace no confirma: WhatsApp lo abre solo para la vista previa). La app avisa.
+4. Desde el mismo enlace puede **cancelarla**. Si el restaurante la cancela o la borra en la app, el enlace dice «Reserva cancelada».
+5. Si el cliente puso email o tiene cuenta, recibe también los avisos por email.
+
+Los enlaces no ocupan espacio aparte: cada reserva guarda una clave de 32 caracteres (unos 100 bytes cifrada).
 
 ---
 
