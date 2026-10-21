@@ -10,7 +10,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | `inicio.php` | Portada (`/`) | `$carta` |
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
-| `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url` |
+| `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form` |
 
 Todas reciben también `$s` (los ajustes del restaurante) y `$cliente` (el cliente con sesión, o `null`).
 
@@ -95,6 +95,10 @@ const TEMA_FOTOS = [
 ```
 
 Cada hueco aparece en la app (Ajustes → Fotos de la web) con su `label` para que el cliente ponga la suya. La primera es la principal (Google y redes sociales). Las fotos de Unsplash se descargan una vez y se sirven desde el propio servidor.
+
+## Confirmar la reserva: el botón es obligatorio
+
+Abrir el enlace del WhatsApp **no confirma** la reserva: WhatsApp, Telegram y los antivirus del correo abren los enlaces solos para hacer la vista previa, y confirmarían reservas sin que nadie las viera. Cuando `$pendiente` es `true`, la página tiene que mostrar los datos y el botón que pinta `<?= $confirmar_form('Confirmar mi reserva', 'mi-clase-de-boton') ?>`. La reserva se confirma cuando el cliente lo pulsa.
 
 ## Reservar: `data-book`
 
