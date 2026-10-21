@@ -2,7 +2,7 @@
 
 Base reutilizable para hacer la web de un restaurante. Para cada cliente solo hay que hacer el diseño, en `web/tema/`; todo lo demás ya funciona:
 
-- **Reservas** en 3 pasos con confirmación por WhatsApp, aforo por franja, días cerrados y antelación mínima.
+- **Reservas** en 3 pasos con confirmación por WhatsApp, aforo con tiempo de mesa (una reserva a las 14:00 con 90 min ocupa sitio hasta las 15:30), días cerrados y antelación mínima.
 - **Cuentas de clientes** con activación por email, historial, cancelación gratis, descarga y borrado de datos.
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
 - **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes.
