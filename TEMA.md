@@ -7,7 +7,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | Archivo | Para qué | Variables que recibe |
 |---|---|---|
 | `tema.php` | Configuración: nombre, versión, colores, huecos de foto. **Solo constantes** (lo leen también la API y el panel). | — |
-| `inicio.php` | Portada (`/`) | `$carta`, `$menus`, `$carta_on` |
+| `inicio.php` | Portada (`/`) | `$carta`, `$menus`, `$carta_on`, `$menus_button` |
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
 | `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form`, `$cancelar_form` |
@@ -19,6 +19,7 @@ Opcionales:
 | Archivo | Para qué | Variables que recibe |
 |---|---|---|
 | `carta.php` | Página propia de la carta (`carta.php`). Si el tema no la tiene, `carta.php` lleva a `./#carta`. | `$carta`, `$menus`, `$carta_on` |
+| `menus.php` | Página propia de los menús (`menus.php`). Si el tema no la tiene, lleva a `./#menus`. | `$menus`, `$carta`, `$carta_on` |
 | `reservar.php` | Página «Cómo reservar» (`reservar.php`): políticas, horario… Si no existe, lleva a `./#reservar`. | — |
 | `lang.php` | Traducciones de los textos del propio tema (ver «Idiomas»). | — |
 
@@ -181,7 +182,7 @@ El restaurante crea en la app (pestaña Carta) los menús de precio cerrado que 
     'days' => [1, 2, 3, 4, 5], 'days_text' => 'de lunes a viernes',
     'every_day' => false, 'today' => true,   // ¿todos los días? ¿se sirve hoy?
     'courses' => [
-      ['name' => 'Primero', 'dishes' => [['name' => 'Caldo', 'desc' => '', 'extra' => 0.0], …]],
+      ['name' => 'Primero', 'dishes' => [['name' => 'Caldo', 'desc' => '', 'extra' => 0.0, 'allergens' => ['apio'], 'photo' => 'https://…/uploads/menu-….jpg'], …]],   // photo puede ser ''
       ['name' => 'Segundo', 'dishes' => [['name' => 'Chuletón', 'desc' => '', 'extra' => 5.0], …]],   // extra = suplemento
     ],
   ],
@@ -189,7 +190,9 @@ El restaurante crea en la app (pestaña Carta) los menús de precio cerrado que 
 ]
 ```
 
-Usa `id="menu-<?= h($m['id']) ?>"` en cada menú para poder enlazarlo. Pinta el suplemento como `+<?= euros($d['extra']) ?> €` solo si `extra > 0`, «Hoy sí / Hoy no» solo si no es `every_day`, y añade «Pregúntanos por los alérgenos de los platos del menú.» (los menús no llevan alérgenos por plato). Textos fijos ya traducidos: «Menús», «Hoy sí», «Hoy no», «a elegir», «Suplemento». Fuera de los temas, `menus_public()` y `carta_on()` dan lo mismo.
+- `$menus_button`: si es `true` (y hay menús), pon en la portada un botón «Ver menús» que lleve a los menús. El restaurante lo activa o lo quita desde la app.
+
+Pon los menús en su propia sección (`id="menus"`), separada de la carta, para que «Ver la carta» lleve solo a la carta. Usa `id="menu-<?= h($m['id']) ?>"` en cada menú para poder enlazarlo. Si un plato tiene foto, ponle `data-zoom`; sus alérgenos se pintan con `al_icon()` como los de la carta. Pinta el suplemento como `+<?= euros($d['extra']) ?> €` solo si `extra > 0`, «Hoy sí / Hoy no» solo si no es `every_day`, y, si algún plato no tiene alérgenos puestos, añade «Pregúntanos por los alérgenos de los platos del menú.». Textos fijos ya traducidos: «Menús», «Hoy sí», «Hoy no», «a elegir», «Suplemento». Fuera de los temas, `menus_public()` y `carta_on()` dan lo mismo.
 
 ## Fotos ampliables
 

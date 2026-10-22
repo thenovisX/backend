@@ -52,9 +52,11 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `reservation_status` | POST | `id`, `status` (`esperando`, `confirmada`, `rechazada`, `cancelada`) |
 | `reservation_save` | POST | `id`? y los datos de la reserva |
 | `reservation_delete` | POST | `id` (desaparece de la app; el enlace del cliente dirá «cancelada») |
-| `admin_menu` | GET | carta completa, también lo agotado, `menus` (todos) y `carta_on` |
+| `admin_menu` | GET | carta completa, también lo agotado, `menus` (todos), `carta_on` y `menus_button` |
 | `category_save`, `category_move`, `category_delete` | POST | `id`, `name` / `dir` |
-| `menu_save` | POST JSON | `id`? (sin id = nuevo), `on`, `title`, `price`, `days` (1–7), `note`, `courses` [{`name`, `dishes` [{`name`, `desc`, `extra`}]}] (permiso carta) |
+| `menu_save` | POST JSON | `id`? (sin id = nuevo), `on`, `title`, `price`, `days` (1–7), `note`, `courses` [{`name`, `dishes` [{`name`, `desc`, `extra`, `allergens`, `photo`}]}] (permiso carta) |
+| `menu_photo` | POST multipart | `photo` (archivo): sube la foto de un plato de un menú y devuelve `photo` (ruta para `menu_save`) y `photo_url` |
+| `menus_button_toggle` | POST JSON | `on`: botón «Ver menús» en la portada (permiso carta) |
 | `menu_toggle` | POST JSON | `id`, `on` (permiso carta) |
 | `menu_move` | POST JSON | `id`, `dir` (-1 o 1) (permiso carta) |
 | `menu_delete` | POST JSON | `id` (permiso carta) |
