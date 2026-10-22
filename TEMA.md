@@ -7,7 +7,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | Archivo | Para qué | Variables que recibe |
 |---|---|---|
 | `tema.php` | Configuración: nombre, versión, colores, huecos de foto. **Solo constantes** (lo leen también la API y el panel). | — |
-| `inicio.php` | Portada (`/`) | `$carta`, `$menu_dia` |
+| `inicio.php` | Portada (`/`) | `$carta`, `$menus`, `$carta_on` |
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
 | `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form`, `$cancelar_form` |
@@ -18,7 +18,7 @@ Opcionales:
 
 | Archivo | Para qué | Variables que recibe |
 |---|---|---|
-| `carta.php` | Página propia de la carta (`carta.php`). Si el tema no la tiene, `carta.php` lleva a `./#carta`. | `$carta`, `$menu_dia` |
+| `carta.php` | Página propia de la carta (`carta.php`). Si el tema no la tiene, `carta.php` lleva a `./#carta`. | `$carta`, `$menus`, `$carta_on` |
 | `reservar.php` | Página «Cómo reservar» (`reservar.php`): políticas, horario… Si no existe, lleva a `./#reservar`. | — |
 | `lang.php` | Traducciones de los textos del propio tema (ver «Idiomas»). | — |
 
@@ -167,22 +167,29 @@ return [
 
 Los textos legales cambian de idioma solos; en la página legal puedes mostrar `legal_aviso_traduccion()` (vacío en español).
 
-## Menú del día
+## Menús y carta principal
 
-El restaurante lo activa y rellena en la app (Carta → Menú del día). Si está desactivado o sin platos, `$menu_dia` es `null` y no hay que pintar nada. Si está activo, viene ya traducido:
+El restaurante crea en la app (pestaña Carta) los menús de precio cerrado que quiera (menú del día, degustación, infantil…), cada uno con su interruptor, y también puede quitar la carta principal de la web.
+
+- `$carta_on`: `false` si el restaurante ha desactivado la carta. Entonces no pintes la carta (los platos siguen en `$carta`, pero no deben verse).
+- `$menus`: lista de menús activos, en el orden de la app, ya traducidos. Vacía si no hay ninguno:
 
 ```php
 [
-  'title' => 'Menú del día', 'price' => 14.5, 'note' => 'Incluye pan y bebida',
-  'days' => [1, 2, 3, 4, 5], 'days_text' => 'de lunes a viernes', 'today' => true,   // ¿se sirve hoy?
-  'courses' => [
-    ['name' => 'Primero', 'dishes' => [['name' => 'Caldo', 'desc' => '', 'extra' => 0.0], …]],
-    ['name' => 'Segundo', 'dishes' => [['name' => 'Chuletón', 'desc' => '', 'extra' => 5.0], …]],   // extra = suplemento
+  [
+    'id' => 'a1b2c3d4', 'title' => 'Menú del día', 'price' => 14.5, 'note' => 'Incluye pan y bebida',
+    'days' => [1, 2, 3, 4, 5], 'days_text' => 'de lunes a viernes',
+    'every_day' => false, 'today' => true,   // ¿todos los días? ¿se sirve hoy?
+    'courses' => [
+      ['name' => 'Primero', 'dishes' => [['name' => 'Caldo', 'desc' => '', 'extra' => 0.0], …]],
+      ['name' => 'Segundo', 'dishes' => [['name' => 'Chuletón', 'desc' => '', 'extra' => 5.0], …]],   // extra = suplemento
+    ],
   ],
+  …
 ]
 ```
 
-Pinta el suplemento como `+<?= euros($d['extra']) ?> €` solo si `extra > 0`, y añade «Pregúntanos por los alérgenos de los platos del menú.» (el menú no lleva alérgenos por plato). Textos fijos ya traducidos: «Hoy hay menú», «Hoy no hay menú», «a elegir», «Suplemento». Enlaza a `#menu-dia` si quieres un acceso directo.
+Usa `id="menu-<?= h($m['id']) ?>"` en cada menú para poder enlazarlo. Pinta el suplemento como `+<?= euros($d['extra']) ?> €` solo si `extra > 0`, «Hoy sí / Hoy no» solo si no es `every_day`, y añade «Pregúntanos por los alérgenos de los platos del menú.» (los menús no llevan alérgenos por plato). Textos fijos ya traducidos: «Menús», «Hoy sí», «Hoy no», «a elegir», «Suplemento». Fuera de los temas, `menus_public()` y `carta_on()` dan lo mismo.
 
 ## Fotos ampliables
 

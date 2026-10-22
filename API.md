@@ -11,7 +11,7 @@ Idioma: la web pública manda `?lang=es|en|pt|gl` (o la cookie `idioma`) y los m
 |---|---|---|---|
 | `ping` | GET | — | nombre del restaurante |
 | `info` | GET | — | nombre, frase, contacto, horario, días cerrados, políticas |
-| `menu` | GET | — | carta: `categories` (con `dishes`), `allergens` y `daily` (menú del día traducido, o `null`) |
+| `menu` | GET | — | carta: `categories` (con `dishes`), `allergens` y `carta_on` y `menus` (menús activos traducidos) |
 | `slots&date=AAAA-MM-DD` | GET | — | `open`, `reason`, `slots: [{time, left}]` |
 | `reserve` | POST | `date`, `time`, `people`, `name`, `phone`, `email`?, `notes`?, `privacy: 1`, `website: ''` | `id`, `when`, `message`, `linked` (sale en una cuenta), `email` |
 
@@ -52,10 +52,13 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `reservation_status` | POST | `id`, `status` (`esperando`, `confirmada`, `rechazada`, `cancelada`) |
 | `reservation_save` | POST | `id`? y los datos de la reserva |
 | `reservation_delete` | POST | `id` (desaparece de la app; el enlace del cliente dirá «cancelada») |
-| `admin_menu` | GET | carta completa, también lo agotado |
+| `admin_menu` | GET | carta completa, también lo agotado, `menus` (todos) y `carta_on` |
 | `category_save`, `category_move`, `category_delete` | POST | `id`, `name` / `dir` |
-| `daily_menu_save` | POST JSON | `on`, `title`, `price`, `days` (1–7), `note`, `courses` [{`name`, `dishes` [{`name`, `desc`, `extra`}]}] (permiso carta) |
-| `daily_menu_toggle` | POST JSON | `on` (permiso carta) |
+| `menu_save` | POST JSON | `id`? (sin id = nuevo), `on`, `title`, `price`, `days` (1–7), `note`, `courses` [{`name`, `dishes` [{`name`, `desc`, `extra`}]}] (permiso carta) |
+| `menu_toggle` | POST JSON | `id`, `on` (permiso carta) |
+| `menu_move` | POST JSON | `id`, `dir` (-1 o 1) (permiso carta) |
+| `menu_delete` | POST JSON | `id` (permiso carta) |
+| `carta_toggle` | POST JSON | `on`: mostrar u ocultar la carta principal en la web (permiso carta) |
 | `dish_save` | POST multipart | `id`?, `name`, `price`, `category_id`, `description`, `allergens` (separados por comas), `available`, `featured`, `photo` (archivo), `remove_photo` |
 | `dish_toggle`, `dish_move`, `dish_delete` | POST | `id`, `available` / `dir` |
 | `settings` | GET | ajustes (sin la contraseña del correo) + huecos de foto del tema |
