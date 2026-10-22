@@ -3,7 +3,9 @@
 Base reutilizable para hacer la web de un restaurante. Para cada cliente solo hay que hacer el diseño, en `web/tema/`; todo lo demás ya funciona:
 
 - **Reservas** en 3 pasos con confirmación por WhatsApp (al pulsar «Reservar» se elige entre reservar online o llamar; llamar se desactiva con un aviso cuando el restaurante está cerrado), aforo con tiempo de mesa (una reserva a las 14:00 con 90 min ocupa sitio hasta las 15:30), días cerrados y antelación mínima.
-- **Cuentas de clientes** con activación por email, historial, cancelación gratis, descarga y borrado de datos.
+- **Cuentas de clientes** con activación por email, historial, cancelación gratis, descarga y borrado de datos. En la app, el administrador ve todas las cuentas (Ajustes → Clientes con cuenta).
+- **Borrar mis datos sin cuenta**: el cliente escribe su email o teléfono en la web (`borrar-datos.php` y la página legal) y confirma con un enlace (por email, o por WhatsApp desde la app); se borra la cuenta, se cancelan sus reservas futuras y se anonimizan las demás.
+- **Rechazar con WhatsApp**: al rechazar una petición, la app propone un mensaje en el idioma del cliente con las horas libres de ese día cerca de la que pidió, o le dice que esperas verle otro día. Las reservas que cancela el cliente llegan como aviso a la app.
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
 - **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes con buscador.
 - **Usuarios con permisos**: el administrador crea usuarios (por ejemplo, camareros que solo ven las reservas) y decide si pueden gestionar reservas, cambiar la carta o los ajustes.

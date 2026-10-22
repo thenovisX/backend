@@ -10,6 +10,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | `inicio.php` | Portada (`/`) | `$carta`, `$menus`, `$carta_on`, `$menus_button` |
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
+| `borrar.php` | Borrar mis datos (`borrar-datos.php`): pedir el enlace y confirmar el borrado. Pinta `borrar_form()` en «pedir» e «invalido» | `$estado`, `$contacto`, `$resumen`, `$hecho`, `$borrar_boton` |
 | `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form`, `$cancelar_form` |
 
 Todas reciben también `$s` (los ajustes del restaurante) y `$cliente` (el cliente con sesión, o `null`).
@@ -80,6 +81,7 @@ Imprime siempre con `h()`: `<?= h($s['name']) ?>`.
 | `al_icon('gluten', 22, 'Gluten')` | Icono de un alérgeno |
 | `precio(12.5)` | `12,50 €` |
 | `cookies_link()` | Enlace «Configurar cookies» (traducido) |
+| `borrar_form('clase-del-botón')` | Formulario «Borrar mis datos» (email o teléfono). Ponlo en la página legal o en las políticas y enlaza `borrar-datos.php` desde el pie |
 | `selector_idioma('mi-clase')` | Banderas circulares para cambiar de idioma (vacío si solo hay uno). Ponlo en la cabecera |
 | `html_lang()` | `es-ES`, `en-GB`, `pt-PT` o `gl-ES`, para `<html lang>` |
 | `t('texto en español', …)` | Texto fijo en el idioma de la visita (admite `%s` y `%d`) |

@@ -14,6 +14,7 @@ Idioma: la web pública manda `?lang=es|en|pt|gl` (o la cookie `idioma`) y los m
 | `menu` | GET | — | carta: `categories` (con `dishes`), `allergens` y `carta_on` y `menus` (menús activos traducidos) |
 | `slots&date=AAAA-MM-DD` | GET | — | `open`, `reason`, `slots: [{time, left}]` |
 | `reserve` | POST | `date`, `time`, `people`, `name`, `phone`, `email`?, `notes`?, `privacy: 1`, `website: ''` | `id`, `when`, `message`, `linked` (sale en una cuenta), `email` |
+| `erase_request` | POST JSON | `contact` (email o teléfono): pide borrar todos los datos; responde siempre lo mismo. Con email llega un enlace; con teléfono, la petición sale en la app |
 
 Límite: 5 reservas por hora desde la misma conexión. `website` es un campo trampa para bots y tiene que ir vacío.
 
@@ -42,6 +43,11 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `login` | POST | `username`, `password` → `token` y `me` (rol y permisos) |
 | `logout`, `me` | POST / GET | — |
 | `users` | GET | (administrador) lista de usuarios y permisos posibles |
+| `customers` | GET | (administrador) cuentas de clientes (`customers`) y peticiones de borrado por teléfono pendientes (`erase`) |
+| `customer_delete` | POST | (administrador) `id`: borra una cuenta |
+| `erase_whatsapp` | POST | (administrador) `id` de una petición de borrado: devuelve `wa_url` con el enlace de confirmación para el cliente |
+| `erase_dismiss` | POST | (administrador) `id`: descarta una petición de borrado |
+| `reject_info` | GET | `id` de una reserva: horas libres ese día cerca de la pedida (`slots`) y textos para rechazarla por WhatsApp (`text_slots` con `{horas}`, `text_none`, `wa_number`) |
 | `user_save` | POST | (administrador) `id`?, `username`, `name`, `password`?, `role` (`admin` o `staff`), `perms` (`reservas`, `carta`, `ajustes`), `active` |
 | `user_delete` | POST | (administrador) `id` |
 | `reservations&from=&to=` | GET | reservas entre dos fechas |
