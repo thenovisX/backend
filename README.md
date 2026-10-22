@@ -2,13 +2,15 @@
 
 Base reutilizable para hacer la web de un restaurante. Para cada cliente solo hay que hacer el diseño, en `web/tema/`; todo lo demás ya funciona:
 
-- **Reservas** en 3 pasos con confirmación por WhatsApp, aforo con tiempo de mesa (una reserva a las 14:00 con 90 min ocupa sitio hasta las 15:30), días cerrados y antelación mínima.
+- **Reservas** en 3 pasos con confirmación por WhatsApp (al pulsar «Reservar» se elige entre reservar online o llamar; llamar se desactiva con un aviso cuando el restaurante está cerrado), aforo con tiempo de mesa (una reserva a las 14:00 con 90 min ocupa sitio hasta las 15:30), días cerrados y antelación mínima.
 - **Cuentas de clientes** con activación por email, historial, cancelación gratis, descarga y borrado de datos.
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
 - **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes con buscador.
 - **Usuarios con permisos**: el administrador crea usuarios (por ejemplo, camareros que solo ven las reservas) y decide si pueden gestionar reservas, cambiar la carta o los ajustes.
 - **Horario de cocina** opcional: las reservas se ofrecen solo con la cocina abierta y la web lo muestra bajo el horario.
 - **Emails** desde el hosting o desde Gmail.
+- **Cuatro idiomas** (español, inglés, portugués y gallego) con banderas circulares. Los textos fijos, la ventana de reserva, las cookies, los textos legales, los errores y los emails y WhatsApp al cliente están traducidos a mano (`web/lib/lang/` y `web/lib/legal/`). La carta, la frase corta, la presentación y las políticas se traducen solas al guardar (MyMemory gratis, o Google Translate con clave) y se corrigen en la app: Ajustes → Idiomas de la web. El nombre y los datos de contacto no se traducen. Cada tema añade los suyos en `web/tema/lang.php`.
+- **Fotos ampliables**: cualquier `<img data-zoom>` se abre a pantalla grande con flechas, deslizar y teclado.
 - **Legal**: aviso legal, condiciones, privacidad y cookies (RGPD, LOPDGDD, LSSI y guía de la AEPD, revisados en octubre de 2026). Aviso de cookies con Google Analytics, Tag Manager y el píxel de Meta solo con consentimiento.
 - **SEO** (descripción, datos estructurados, sitemap, Search Console) e **instalable como app** (PWA).
 - **Seguridad**: datos personales cifrados, borrado a las 24 h y bloqueo por intentos fallidos. Ver [SEGURIDAD.md](SEGURIDAD.md).
@@ -18,8 +20,9 @@ Incluye un tema de ejemplo («Base») para que la web funcione desde el primer m
 ```
 web/                → lo que se sube a Hostinger
   tema/             → EL DISEÑO: lo único que cambias en cada proyecto (ver TEMA.md)
-  index.php, cuenta.php, legal.php, confirmar.php
-                    → «puertas»: hacen la lógica y llaman al tema. No se tocan.
+  index.php, cuenta.php, legal.php, confirmar.php, carta.php, reservar.php
+                    → «puertas»: hacen la lógica y llaman al tema. No se tocan. carta.php y reservar.php
+                      solo se ven si el tema tiene esas páginas (si no, llevan a la portada).
   api/              → API que usan la web y la app
   lib/              → el backend (reservas, clientes, carta, emails, textos legales…)
   sdk/              → JavaScript y CSS comunes: ventana de reserva, aviso de cookies, cuenta
@@ -46,7 +49,7 @@ API.md              → todas las rutas de la API
 
 Como el diseño está separado, basta con copiar del repositorio `backend-restaurante` a la web del cliente estas carpetas y archivos, **sin tocar `web/tema/`**:
 
-`web/api/`, `web/lib/`, `web/sdk/`, `web/panel/`, `app/www/`, `web/index.php`, `web/cuenta.php`, `web/legal.php`, `web/confirmar.php`, `web/foto.php`, `web/icon.php`, `web/manifest.php`, `web/sitemap.php`, `web/robots.php`, `web/sw.js`, `web/install.php` y `web/.htaccess`.
+`web/api/`, `web/lib/`, `web/sdk/`, `web/panel/`, `app/www/`, `web/index.php`, `web/cuenta.php`, `web/legal.php`, `web/confirmar.php`, `web/carta.php`, `web/reservar.php`, `web/foto.php`, `web/icon.php`, `web/manifest.php`, `web/sitemap.php`, `web/robots.php`, `web/sw.js`, `web/install.php` y `web/.htaccess`.
 
 La base de datos se actualiza sola al abrir la web: las tablas y columnas nuevas se añaden sin perder datos.
 

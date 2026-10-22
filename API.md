@@ -5,6 +5,8 @@ GET para leer y POST con JSON (`Content-Type: application/json`) para escribir.
 
 ## Públicas (las usa la web)
 
+Idioma: la web pública manda `?lang=es|en|pt|gl` (o la cookie `idioma`) y los mensajes de error y los emails salen en ese idioma. La API de gestión responde siempre en español.
+
 | Ruta | Método | Datos | Devuelve |
 |---|---|---|---|
 | `ping` | GET | — | nombre del restaurante |
@@ -58,4 +60,8 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `settings_save` | POST | cualquier ajuste |
 | `web_photo` / `web_photo_reset` | POST | `key` (hueco de `TEMA_FOTOS`), `photo` (archivo) |
 | `mail_test` | POST | `to`? → envía un email de prueba |
+| `tr_status` | GET | (ajustes) cuántos textos hay traducidos de cada idioma y el último error del traductor |
+| `tr_run` | POST | (ajustes) traduce ahora lo que falte |
+| `tr_list` | GET | (ajustes) todos los textos con sus traducciones, para revisarlas |
+| `tr_save` | POST | (ajustes) `h`, `lang`, `txt` → guarda una traducción corregida a mano (ya no se pisa) |
 | `password` | POST | `current`, `new` |

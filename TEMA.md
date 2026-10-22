@@ -14,13 +14,21 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 
 Todas reciben también `$s` (los ajustes del restaurante) y `$cliente` (el cliente con sesión, o `null`).
 
-El resto es libre: `partes.php` (cabecera y pie compartidos), `assets/` (CSS, JS, fuentes, imágenes). Para enlazar un archivo de `assets/` con su versión: `<?= asset('tema.css') ?>`.
+Opcionales:
+
+| Archivo | Para qué | Variables que recibe |
+|---|---|---|
+| `carta.php` | Página propia de la carta (`carta.php`). Si el tema no la tiene, `carta.php` lleva a `./#carta`. | `$carta` |
+| `reservar.php` | Página «Cómo reservar» (`reservar.php`): políticas, horario… Si no existe, lleva a `./#reservar`. | — |
+| `lang.php` | Traducciones de los textos del propio tema (ver «Idiomas»). | — |
+
+El resto es libre: `partes.php` (cabecera y pie compartidos), `assets/` (CSS, JS, fuentes, imágenes). Para enlazar un archivo de `assets/` con su versión: `<?= asset('tema.css') ?>`. Si tu tema tiene `carta.php` o `reservar.php`, enlázalas desde el menú (`carta.php`, `reservar.php`) y entran solas en el sitemap.
 
 ## Lo que tiene que tener cada página (obligatorio)
 
 ```php
 <!doctype html>
-<html lang="es">
+<html lang="<?= html_lang() ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -52,6 +60,8 @@ El resto es libre: `partes.php` (cabecera y pie compartidos), `assets/` (CSS, JS
 
 Imprime siempre con `h()`: `<?= h($s['name']) ?>`.
 
+`$s` ya viene traducido al idioma de la visita en los textos propios del restaurante (`tagline`, `description`, `footer_title`, `ribbon` y `policies`): imprimes `$s['tagline']` y sale en el idioma que toca. El nombre y los datos de contacto nunca se traducen.
+
 ## Funciones disponibles
 
 | Función | Devuelve |
@@ -68,8 +78,14 @@ Imprime siempre con `h()`: `<?= h($s['name']) ?>`.
 | `tel_href($tel)`, `wa_href()`, `maps_href()` | Enlaces para llamar, WhatsApp y «Cómo llegar» |
 | `al_icon('gluten', 22, 'Gluten')` | Icono de un alérgeno |
 | `precio(12.5)` | `12,50 €` |
-| `cookies_link()` | Enlace «Configurar cookies» |
-| `menu_data(false)` | La carta (ya viene en `$carta` en la portada) |
+| `cookies_link()` | Enlace «Configurar cookies» (traducido) |
+| `selector_idioma('mi-clase')` | Banderas circulares para cambiar de idioma (vacío si solo hay uno). Ponlo en la cabecera |
+| `html_lang()` | `es-ES`, `en-GB`, `pt-PT` o `gl-ES`, para `<html lang>` |
+| `t('texto en español', …)` | Texto fijo en el idioma de la visita (admite `%s` y `%d`) |
+| `tr('texto del restaurante')` | Texto del restaurante traducido (solo si lo imprimes sin pasar por `$s`, `$carta` o `politicas()`) |
+| `tema_tiene('carta')` | ¿Existe `tema/carta.php`? |
+| `carta_publica()` | La carta con nombres, descripciones y alérgenos en el idioma de la visita (ya viene en `$carta`) |
+| `menu_data(false)` | La carta sin traducir |
 
 ### La carta: `$carta`
 
@@ -106,6 +122,8 @@ Pon también `<?= $cancelar_form('Cancelar la reserva', 'mi-clase') ?>`: deja al
 
 Cualquier elemento con `data-book` abre la ventana de reserva, por ejemplo `<a href="#reservar" data-book>Reservar</a>`. No hace falta nada más.
 
+Si el restaurante tiene teléfono, la ventana empieza preguntando **«¿Cómo quieres reservar?»**: reservar online o llamar. «Llamar» se desactiva y avisa («Ahora estamos cerrados. Podrás llamarnos hoy a las 20:00») cuando la hora del restaurante queda fuera de su horario de apertura o es un día cerrado. Sin teléfono, la ventana va directa a la reserva online.
+
 Para que la ventana y el aviso de cookies combinen con tu diseño, define estas variables en tu CSS:
 
 ```css
@@ -124,7 +142,34 @@ Para que la ventana y el aviso de cookies combinen con tu diseño, define estas 
 }
 ```
 
-Todas sus clases empiezan por `bk-` (reserva) y `ck-` (cookies): no uses esos prefijos en tu tema.
+Todas sus clases empiezan por `bk-` (reserva), `ck-` (cookies) y `r-` (idiomas, avisos y fotos ampliadas): no uses esos prefijos en tu tema.
+
+## Idiomas
+
+La web sale en español, inglés, portugués y gallego (el restaurante activa los que quiera en la app: Ajustes → Idiomas de la web). El backend ya traduce a mano la ventana de reserva, el aviso de cookies, los textos legales, los errores, la cuenta y los emails y WhatsApp al cliente. El tema solo tiene que hacer tres cosas:
+
+1. `<html lang="<?= html_lang() ?>">` y `<?= selector_idioma('mi-clase') ?>` en la cabecera. Sus clases son `.r-langs`, `.r-lang` (`.is-on` la actual) y `.r-flag`; el CSS base está en `sdk/restaurante.css` y lo adaptas desde tu CSS.
+2. Escribir los textos fijos del tema con `t('texto en español')` y ponerles la traducción en `tema/lang.php`:
+
+```php
+<?php
+return [
+    'dict' => [
+        'Nuestra historia' => ['en' => 'Our story', 'pt' => 'A nossa história', 'gl' => 'A nosa historia'],
+        'Hola, %s' => ['en' => 'Hello, %s', 'pt' => 'Olá, %s', 'gl' => 'Ola, %s'],
+    ],
+    'js' => ['Texto usado desde JavaScript'],   // opcional: claves que el JS del tema pide con Restaurante.t('…')
+];
+```
+
+   Si falta una traducción, el texto sale en español. Los textos comunes («Carta», «Reservar mesa», «Cómo llegar», alérgenos, días…) ya están en `lib/lang/textos.php`; no hace falta repetirlos.
+3. No traducir a mano la carta ni los datos del restaurante: salen traducidos solos en `$s`, `$carta` y `politicas()`. Se traducen al guardar en la app (traductor automático, corregible a mano).
+
+Los textos legales cambian de idioma solos; en la página legal puedes mostrar `legal_aviso_traduccion()` (vacío en español).
+
+## Fotos ampliables
+
+Cualquier `<img data-zoom>` se amplía a pantalla grande al tocarla, con flechas, deslizar el dedo y teclado (Escape cierra). Opcionales: `data-zoom-src="…"` (foto grande), `data-zoom-caption="…"` (pie) y `data-zoom-group="platos"` (las flechas pasan solo entre fotos del mismo grupo). Con `photo_img()` basta pasar `'loading="lazy" data-zoom'` como último parámetro. Si añades fotos con JavaScript, llama a `Restaurante.ampliarFotos()`.
 
 ## Cuenta del cliente: atributos `data-*`
 
@@ -154,6 +199,7 @@ En `window.Restaurante` tienes:
 
 - `Restaurante.api('slots&date=2026-11-02')` y `Restaurante.api('reserve', {...})`: llamadas a la API (ver API.md);
 - `Restaurante.abrirReserva()`;
+- `Restaurante.t('Texto')`: traduce un texto con el idioma actual (las claves van en `tema/lang.php`, sección `js`);
 - `Restaurante.toast('Texto')`;
 - `Restaurante.datos`: horario, días cerrados y cliente.
 
