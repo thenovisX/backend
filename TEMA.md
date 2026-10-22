@@ -7,7 +7,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | Archivo | Para qué | Variables que recibe |
 |---|---|---|
 | `tema.php` | Configuración: nombre, versión, colores, huecos de foto. **Solo constantes** (lo leen también la API y el panel). | — |
-| `inicio.php` | Portada (`/`) | `$carta` |
+| `inicio.php` | Portada (`/`) | `$carta`, `$menu_dia` |
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
 | `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form`, `$cancelar_form` |
@@ -18,7 +18,7 @@ Opcionales:
 
 | Archivo | Para qué | Variables que recibe |
 |---|---|---|
-| `carta.php` | Página propia de la carta (`carta.php`). Si el tema no la tiene, `carta.php` lleva a `./#carta`. | `$carta` |
+| `carta.php` | Página propia de la carta (`carta.php`). Si el tema no la tiene, `carta.php` lleva a `./#carta`. | `$carta`, `$menu_dia` |
 | `reservar.php` | Página «Cómo reservar» (`reservar.php`): políticas, horario… Si no existe, lleva a `./#reservar`. | — |
 | `lang.php` | Traducciones de los textos del propio tema (ver «Idiomas»). | — |
 
@@ -166,6 +166,23 @@ return [
 3. No traducir a mano la carta ni los datos del restaurante: salen traducidos solos en `$s`, `$carta` y `politicas()`. Se traducen al guardar en la app (traductor automático, corregible a mano).
 
 Los textos legales cambian de idioma solos; en la página legal puedes mostrar `legal_aviso_traduccion()` (vacío en español).
+
+## Menú del día
+
+El restaurante lo activa y rellena en la app (Carta → Menú del día). Si está desactivado o sin platos, `$menu_dia` es `null` y no hay que pintar nada. Si está activo, viene ya traducido:
+
+```php
+[
+  'title' => 'Menú del día', 'price' => 14.5, 'note' => 'Incluye pan y bebida',
+  'days' => [1, 2, 3, 4, 5], 'days_text' => 'de lunes a viernes', 'today' => true,   // ¿se sirve hoy?
+  'courses' => [
+    ['name' => 'Primero', 'dishes' => [['name' => 'Caldo', 'desc' => '', 'extra' => 0.0], …]],
+    ['name' => 'Segundo', 'dishes' => [['name' => 'Chuletón', 'desc' => '', 'extra' => 5.0], …]],   // extra = suplemento
+  ],
+]
+```
+
+Pinta el suplemento como `+<?= euros($d['extra']) ?> €` solo si `extra > 0`, y añade «Pregúntanos por los alérgenos de los platos del menú.» (el menú no lleva alérgenos por plato). Textos fijos ya traducidos: «Hoy hay menú», «Hoy no hay menú», «a elegir», «Suplemento». Enlaza a `#menu-dia` si quieres un acceso directo.
 
 ## Fotos ampliables
 
