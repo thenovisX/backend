@@ -1363,7 +1363,7 @@
           <button class="btn btn-line" type="button" data-mail-test>Enviar un email de prueba</button>
           <p class="help">La prueba llega a «${esc(s.notify_email || s.email || 'el email de avisos')}». Gmail permite unos 500 emails al día, de sobra para un restaurante.</p>
         </form>`)}
-      ${sec('whatsapp', 'WhatsApp automático', s.wa_on ? 'Activado: el WhatsApp sale solo al aceptar' : 'Mandar el WhatsApp de confirmación sin abrir el móvil', `
+      ${sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on ? [s.wa_on && 'sale solo al aceptar', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
         <form class="form" data-form="whatsapp" novalidate>
           <p class="help">Con la API oficial de WhatsApp Business (Meta), al aceptar una reserva el mensaje con el enlace para confirmar le llega al cliente solo. Si algo falla, puedes seguir mandándolo a mano.</p>
           <ol class="steps">
@@ -1379,6 +1379,15 @@
           </div>
           <p class="help">Si la plantilla está traducida en Meta a inglés (en) o portugués (pt_PT), al cliente le llega en su idioma. Sin plantilla, Meta solo entrega el mensaje si el cliente te ha escrito en las últimas 24 horas.</p>
           <label class="switch-row">Enviar el WhatsApp automáticamente al aceptar <span class="sw"><input type="checkbox" name="wa_on" ${s.wa_on ? 'checked' : ''}><span></span></span></label>
+          <p><b>Recordatorios</b></p>
+          <p class="help">A las reservas confirmadas les llega un WhatsApp 24 horas y 12 horas antes con el día, la hora y las personas. Si confirman con menos tiempo, solo les llega el que aún toque.</p>
+          ${field('wa_remind_template', 'Plantilla del recordatorio', 'text', 'placeholder="recordatorio_reserva" autocapitalize="off" autocomplete="off"')}
+          <p class="help">Otra plantilla de Utilidad con 4 variables: {{1}} nombre, {{2}} día, {{3}} hora y {{4}} personas. Por ejemplo: «Hola {{1}}, te recordamos tu reserva el {{2}} a las {{3}} ({{4}}). ¡Te esperamos!». Usa el mismo idioma que la de confirmar.</p>
+          <label class="switch-row">Enviar recordatorios 24 h y 12 h antes <span class="sw"><input type="checkbox" name="wa_remind_on" ${s.wa_remind_on ? 'checked' : ''}><span></span></span></label>
+          <details class="adv"><summary>Tarea programada (opcional)</summary>
+            <p class="help">Los recordatorios salen solos mientras alguien visita la web o usa la app. Para que salgan a su hora aunque no entre nadie, crea en Hostinger (Avanzado → Cron Jobs) una tarea cada 10 minutos que abra esta dirección:</p>
+            <label>Dirección para el cron <input type="text" readonly value="${esc(s.cron_url || '')}"></label>
+          </details>
           ${s.wa_error ? `<p class="err-box">Último error al enviar: ${esc(s.wa_error)}</p>` : ''}
           <button class="btn btn-main" type="submit">Guardar</button>
           <button class="btn btn-line" type="button" data-wa-test>Enviar un WhatsApp de prueba</button>

@@ -362,7 +362,8 @@ function save_reservation(array $in): array
     $id = (int)($in['id'] ?? 0);
     if ($id) {
         get_reservation($id);
-        q('UPDATE reservations SET name=?, phone=?, email=?, email_idx=?, rdate=?, rtime=?, people=?, notes=?, updated_at=? WHERE id=?', [
+        // Los recordatorios vuelven a empezar por si ha cambiado el día o la hora
+        q('UPDATE reservations SET name=?, phone=?, email=?, email_idx=?, rdate=?, rtime=?, people=?, notes=?, updated_at=?, reminders=0 WHERE id=?', [
             enc($d['name']), enc($d['phone']), enc($d['email']), email_idx($d['email']), $d['rdate'], $d['rtime'], $d['people'], enc($d['notes']), now(), $id,
         ]);
         return get_reservation_admin($id);

@@ -108,6 +108,8 @@ Sin esto, al aceptar una reserva se abre WhatsApp en el móvil con el mensaje es
 3. Copia el **identificador del número de teléfono** y un **token de acceso permanente** (usuario del sistema con permiso `whatsapp_business_messaging`).
 4. En la app: **Ajustes → WhatsApp automático**. Pega los datos, el nombre y el idioma de la plantilla, activa el interruptor, guarda y pulsa **Enviar un WhatsApp de prueba**.
 
+**Recordatorios** (opcional): con otra plantilla de Utilidad de 4 variables (`{{1}}` nombre, `{{2}}` día, `{{3}}` hora, `{{4}}` personas) y el interruptor «Enviar recordatorios 24 h y 12 h antes», a cada reserva confirmada le llega un WhatsApp 24 h y 12 h antes. Cada aviso se marca en la reserva antes de enviarlo, así que nunca sale dos veces; si cambias el día o la hora, vuelven a empezar. Salen con las visitas a la web y el uso de la app (como mucho cada 5 minutos) y, para que lleguen a su hora aunque no entre nadie, conviene un Cron Job en Hostinger cada 10 minutos con la dirección que sale en la app (`cron.php?key=…`) o `php public_html/cron.php`.
+
 El token se guarda cifrado y nunca vuelve a la app. Si Meta da error, la reserva queda igualmente «esperando», el error sale en Ajustes y en la ficha de la reserva está **Enviar a mano** con el enlace de siempre. Hace falta cURL en el servidor (Hostinger lo trae).
 
 ## Cómo funcionan las reservas
