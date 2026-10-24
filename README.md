@@ -99,10 +99,21 @@ Guarda una copia de `config.php`: sin él no se pueden leer los datos cifrados.
 
 Sirve igual para el correo de Hostinger (smtp.hostinger.com, puerto 465).
 
+## 4. WhatsApp automático (opcional, API de Meta)
+
+Sin esto, al aceptar una reserva se abre WhatsApp en el móvil con el mensaje escrito y hay que pulsar enviar. Con la API oficial de WhatsApp Business el mensaje sale solo desde el servidor.
+
+1. En **business.facebook.com** crea una app de WhatsApp y registra el número del restaurante (ese número deja de poder usarse en la app normal de WhatsApp, salvo con la «coexistencia» de WhatsApp Business).
+2. Crea una plantilla de categoría **Utilidad** con 5 variables en el cuerpo, en este orden: `{{1}}` nombre, `{{2}}` día, `{{3}}` hora, `{{4}}` personas, `{{5}}` enlace para confirmar. Meta solo deja escribir primero a un cliente con una plantilla aprobada. Si la traduces a inglés (`en`) o portugués (`pt_PT`), al cliente le llega en su idioma; si no, en el idioma por defecto.
+3. Copia el **identificador del número de teléfono** y un **token de acceso permanente** (usuario del sistema con permiso `whatsapp_business_messaging`).
+4. En la app: **Ajustes → WhatsApp automático**. Pega los datos, el nombre y el idioma de la plantilla, activa el interruptor, guarda y pulsa **Enviar un WhatsApp de prueba**.
+
+El token se guarda cifrado y nunca vuelve a la app. Si Meta da error, la reserva queda igualmente «esperando», el error sale en Ajustes y en la ficha de la reserva está **Enviar a mano** con el enlace de siempre. Hace falta cURL en el servidor (Hostinger lo trae).
+
 ## Cómo funcionan las reservas
 
 1. El cliente reserva en la web (teléfono obligatorio, email opcional). Ve «Petición realizada».
-2. En la app aparece en **Peticiones**. Al pulsar **Confirmar por WhatsApp** se abre WhatsApp con el mensaje y el enlace.
+2. En la app aparece en **Peticiones**. Al pulsar **Confirmar por WhatsApp** se abre WhatsApp con el mensaje y el enlace. Con el WhatsApp automático activado, el botón es **Aceptar y enviar WhatsApp automático** y el mensaje sale solo.
 3. El cliente abre el enlace, ve sus datos y pulsa **Confirmar mi reserva** (abrir el enlace no confirma: WhatsApp lo abre solo para la vista previa). La app avisa.
 4. Desde el mismo enlace puede **cancelarla**. Si el restaurante la cancela o la borra en la app, el enlace dice «Reserva cancelada».
 5. Si el cliente puso email o tiene cuenta, recibe también los avisos por email.
