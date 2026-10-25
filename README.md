@@ -1,9 +1,11 @@
 # Backend para webs de restaurantes
 
+> **¿Eres el dueño del restaurante?** Lee la [guía sencilla](docs/GUIA-CLIENTE.md): instalación en Hostinger, ajustes, WhatsApp y el día a día.
+
 Base reutilizable para hacer la web de un restaurante. Para cada cliente solo hay que hacer el diseño, en `web/tema/`; todo lo demás ya funciona:
 
 - **Reservas** en 3 pasos con confirmación por WhatsApp (al pulsar «Reservar» se elige entre reservar online o llamar; llamar se desactiva con un aviso cuando el restaurante está cerrado), aforo con tiempo de mesa (una reserva a las 14:00 con 90 min ocupa sitio hasta las 15:30), días cerrados y antelación mínima.
-- **Cuentas de clientes** con activación por email, historial, cancelación gratis, descarga y borrado de datos. En la app, el administrador ve todas las cuentas (Ajustes → Clientes con cuenta).
+- **Cuentas de clientes** con activación por email, recuperación de contraseña por email, historial, cancelación gratis, descarga y borrado de datos. En la app, el administrador ve todas las cuentas (Ajustes → Clientes con cuenta).
 - **Borrar mis datos sin cuenta**: el cliente escribe su email o teléfono en la web (`borrar-datos.php` y la página legal) y confirma con un enlace (por email, o por WhatsApp desde la app); se borra la cuenta, se cancelan sus reservas futuras y se anonimizan las demás.
 - **Rechazar con WhatsApp**: al rechazar una petición, la app propone un mensaje en el idioma del cliente con las horas libres de ese día cerca de la que pidió, o le dice que esperas verle otro día. Las reservas que cancela el cliente llegan como aviso a la app.
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
@@ -52,7 +54,7 @@ API.md              → todas las rutas de la API
 
 Como el diseño está separado, basta con copiar del repositorio `backend-restaurante` a la web del cliente estas carpetas y archivos, **sin tocar `web/tema/`**:
 
-`web/api/`, `web/lib/`, `web/sdk/`, `web/panel/`, `app/www/`, `web/index.php`, `web/cuenta.php`, `web/legal.php`, `web/confirmar.php`, `web/carta.php`, `web/reservar.php`, `web/foto.php`, `web/icon.php`, `web/manifest.php`, `web/sitemap.php`, `web/robots.php`, `web/sw.js`, `web/install.php` y `web/.htaccess`.
+`web/api/`, `web/lib/`, `web/sdk/`, `web/panel/`, `app/www/`, `web/index.php`, `web/cuenta.php`, `web/recuperar.php`, `web/borrar-datos.php`, `web/legal.php`, `web/confirmar.php`, `web/carta.php`, `web/menus.php`, `web/reservar.php`, `web/cron.php`, `web/foto.php`, `web/icon.php`, `web/manifest.php`, `web/sitemap.php`, `web/robots.php`, `web/sw.js`, `web/install.php` y `web/.htaccess`.
 
 La base de datos se actualiza sola al abrir la web: las tablas y columnas nuevas se añaden sin perder datos.
 
@@ -95,7 +97,7 @@ Guarda una copia de `config.php`: sin él no se pueden leer los datos cifrados.
 
 1. En la cuenta de Google, activa la **verificación en 2 pasos**.
 2. En **myaccount.google.com/apppasswords**, crea una contraseña («Web restaurante») y copia las 16 letras.
-3. En la app: **Ajustes → Envío de emails**. Pon el Gmail y esa contraseña, activa el interruptor, guarda y pulsa **Enviar un email de prueba**.
+3. En la app: **Ajustes → Técnico → Avanzado → Envío de emails**. Pon el Gmail y esa contraseña, activa el interruptor, guarda y pulsa **Enviar un email de prueba**.
 
 Sirve igual para el correo de Hostinger (smtp.hostinger.com, puerto 465).
 
@@ -106,7 +108,7 @@ Sin esto, al aceptar una reserva se abre WhatsApp en el móvil con el mensaje es
 1. En **business.facebook.com** crea una app de WhatsApp y registra el número del restaurante (ese número deja de poder usarse en la app normal de WhatsApp, salvo con la «coexistencia» de WhatsApp Business).
 2. Crea una plantilla de categoría **Utilidad** con 5 variables en el cuerpo, en este orden: `{{1}}` nombre, `{{2}}` día, `{{3}}` hora, `{{4}}` personas, `{{5}}` enlace para confirmar. Meta solo deja escribir primero a un cliente con una plantilla aprobada. Si la traduces a inglés (`en`) o portugués (`pt_PT`), al cliente le llega en su idioma; si no, en el idioma por defecto.
 3. Copia el **identificador del número de teléfono** y un **token de acceso permanente** (usuario del sistema con permiso `whatsapp_business_messaging`).
-4. En la app: **Ajustes → WhatsApp automático**. Pega los datos, el nombre y el idioma de la plantilla, activa el interruptor, guarda y pulsa **Enviar un WhatsApp de prueba**.
+4. En la app: **Ajustes → Técnico → Avanzado → WhatsApp automático**. Pega los datos, el nombre y el idioma de la plantilla, activa el interruptor, guarda y pulsa **Enviar un WhatsApp de prueba**.
 
 **Recordatorios** (opcional): con otra plantilla de Utilidad de 4 variables (`{{1}}` nombre, `{{2}}` día, `{{3}}` hora, `{{4}}` personas) y el interruptor «Enviar recordatorios 24 h y 12 h antes», a cada reserva confirmada le llega un WhatsApp 24 h y 12 h antes. Cada aviso se marca en la reserva antes de enviarlo, así que nunca sale dos veces; si cambias el día o la hora, vuelven a empezar. Salen con las visitas a la web y el uso de la app (como mucho cada 5 minutos) y, para que lleguen a su hora aunque no entre nadie, conviene un Cron Job en Hostinger cada 10 minutos con la dirección que sale en la app (`cron.php?key=…`) o `php public_html/cron.php`.
 
