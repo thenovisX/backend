@@ -34,7 +34,8 @@ function require_admin(array $u): void
 function user_out(array $u): array
 {
     return ['id' => (int)$u['id'], 'username' => $u['username'], 'name' => (string)($u['name'] ?? ''), 'role' => $u['role'] ?? 'admin',
-        'perms' => user_perms($u), 'active' => (bool)($u['active'] ?? 1), 'created_at' => $u['created_at'] ?? ''];
+        'perms' => user_perms($u), 'active' => (bool)($u['active'] ?? 1), 'created_at' => $u['created_at'] ?? '',
+        'email' => ($u['email'] ?? '') !== '' ? dec($u['email']) : ''];
 }
 
 function users_list(): array
@@ -58,8 +59,11 @@ function user_save(array $me, array $in): array
     $perms = implode(',', array_intersect(array_keys(PERMS), (array)($in['perms'] ?? [])));
     $active = filter_var($in['active'] ?? true, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
     $pass = (string)($in['password'] ?? '');
+    $email = mb_strtolower(str_in($in, 'email', 120));
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new ValidationError('El email no parece correcto');
     if ($pass !== '' && strlen($pass) < 8) throw new ValidationError('La contraseña necesita al menos 8 caracteres');
     if (q('SELECT id FROM users WHERE username = ? AND id <> ?', [$username, $id])->fetch()) throw new ValidationError('Ya hay un usuario con ese nombre');
+    if ($email !== '' && q('SELECT id FROM users WHERE email_idx = ? AND id <> ?', [email_idx($email), $id])->fetch()) throw new ValidationError('Ese email ya lo usa otro usuario');
 
     if ($id) {
         $old = q('SELECT * FROM users WHERE id = ?', [$id])->fetch();
@@ -79,6 +83,7 @@ function user_save(array $me, array $in): array
         $id = (int)db()->lastInsertId();
         audit('usuario_creado', 0, "Usuario del panel «{$username}» creado por {$me['username']}");
     }
+    if (array_key_exists('email', $in)) user_store_email($id, $email);
     return user_out(q('SELECT * FROM users WHERE id = ?', [$id])->fetch());
 }
 

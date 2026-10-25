@@ -41,6 +41,7 @@ a { color: inherit; }
 .gate input { padding: 14px; border-radius: 12px; border: 0; background: #fff; color: var(--mar); font-size: 1.05rem; }
 .gate .link { background: none; border: 0; color: #CFDCE2; text-decoration: underline; padding: 8px 0; justify-self: start; }
 .gate .err { background: #FBEAE8; color: #8A2219; padding: 10px 12px; border-radius: 10px; margin: 0; }
+.gate .ok { background: #E6F4EA; color: #1E5631; padding: 10px 12px; border-radius: 10px; margin: 0; }
 .gate .hint { font-size: .9rem; color: #A9BEC7; margin: 0; }
 
 /* ---------- Botones ---------- */
