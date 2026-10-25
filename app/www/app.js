@@ -1344,26 +1344,6 @@
           <button class="btn btn-line" type="button" data-mail-test>Enviar un email de prueba</button>
           <p class="help">La prueba llega a «${esc(s.notify_email || s.email || 'el email de avisos')}». Gmail permite unos 500 emails al día, de sobra para un restaurante.</p>
         </form>`),
-      sec('traductor', 'Traductor automático', s.tr_provider === 'google' ? 'Google Translate, con clave' : 'MyMemory, gratis y sin cuenta', `
-        <form class="form" data-form="traductor" novalidate>
-          <label>Traductor <select name="tr_provider">
-            <option value="mymemory" ${s.tr_provider !== 'google' ? 'selected' : ''}>MyMemory (gratis, sin cuenta)</option>
-            <option value="google" ${s.tr_provider === 'google' ? 'selected' : ''}>Google Translate (con clave)</option>
-          </select></label>
-          <p class="help">MyMemory es gratis y traduce unos 50.000 caracteres al día, de sobra para una carta. Google traduce mejor y regala 500.000 caracteres al mes: crea una clave de «Cloud Translation API» en console.cloud.google.com.</p>
-          <label>Clave de Google <input name="tr_google_key" type="password" autocomplete="off" placeholder="${s.tr_google_key_set ? SAVED_SECRET : 'AIza…'}"><span class="help">Solo hace falta con Google Translate. Se guarda cifrada.</span></label>
-          <button class="btn btn-main" type="submit">Guardar</button>
-        </form>`),
-      sec('seo', 'Google y estadísticas', 'Descripción en Google, Search Console, Analytics y Píxel de Meta', `
-        <form class="form" data-form="seo" novalidate>
-          <label>Descripción para Google <textarea name="seo_description" rows="3" maxlength="300" placeholder="Restaurante de cocina de fuego y coctelería en Vigo. Reserva mesa online.">${esc(s.seo_description)}</textarea><span class="help">Es el texto que sale en Google debajo del nombre. Unas 150 letras, con el tipo de cocina y la ciudad.</span></label>
-          ${field('gsc_verify', 'Código de Google Search Console', 'text', 'placeholder="Pega aquí el código o la etiqueta meta" autocapitalize="off"')}
-          ${field('ga_id', 'Google Analytics 4 (ID de medición)', 'text', 'placeholder="G-AB12CD34EF" autocapitalize="characters"')}
-          ${field('gtm_id', 'Google Tag Manager (opcional)', 'text', 'placeholder="GTM-AB12CD3" autocapitalize="characters"')}
-          ${field('pixel_id', 'Píxel de Meta: Facebook e Instagram (opcional)', 'text', 'placeholder="123456789012345" inputmode="numeric"')}
-          <p class="help">Analytics y los píxeles solo se activan para los visitantes que acepten las cookies. El mapa del sitio para Google está en ${esc(S.base.replace(/^https?:\/\//, ''))}/sitemap.xml</p>
-          <button class="btn btn-main" type="submit">Guardar</button>
-        </form>`),
       sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on ? [s.wa_on && 'sale solo al aceptar', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
         <form class="form" data-form="whatsapp" novalidate>
           <p class="help">Con la API oficial de WhatsApp Business (Meta), al aceptar una reserva el mensaje con el enlace para confirmar le llega al cliente solo. Si algo falla, puedes seguir mandándolo a mano.</p>
@@ -1373,7 +1353,7 @@
             <li>Copia el <b>identificador del número de teléfono</b> y un <b>token de acceso permanente</b> (de un usuario del sistema) y pégalos aquí.</li>
           </ol>
           ${field('wa_phone_id', 'Identificador del número de teléfono', 'text', 'placeholder="123456789012345" inputmode="numeric" autocomplete="off"')}
-          <label>Token de acceso de Meta <input name="wa_token" type="password" autocomplete="new-password" placeholder="${s.wa_token_set ? SAVED_SECRET : 'EAAG…'}"><span class="help">Se guarda cifrado y nunca vuelve a la app.</span></label>
+          <label>Token de acceso de Meta <input name="wa_token" type="password" autocomplete="new-password" data-saved="Guardado (escribe otro para cambiarlo)" placeholder="${s.wa_token_set ? 'Guardado (escribe otro para cambiarlo)' : 'EAAG…'}"><span class="help">Se guarda cifrado y nunca vuelve a la app.</span></label>
           <div class="row">
             ${field('wa_template', 'Nombre de la plantilla', 'text', 'placeholder="confirmar_reserva" autocapitalize="off" autocomplete="off"')}
             ${field('wa_template_lang', 'Idioma de la plantilla', 'text', 'placeholder="es" autocapitalize="off" autocomplete="off"')}
@@ -1394,6 +1374,26 @@
           <button class="btn btn-line" type="button" data-wa-test>Enviar un WhatsApp de prueba</button>
           <p class="help">La prueba llega al WhatsApp del restaurante (${esc(s.whatsapp || s.phone || 'el de Contacto')}).</p>
         </form>`),
+      sec('traductor', 'Traductor automático', s.tr_provider === 'google' ? 'Google Translate, con clave' : 'MyMemory, gratis y sin cuenta', `
+        <form class="form" data-form="traductor" novalidate>
+          <label>Traductor <select name="tr_provider">
+            <option value="mymemory" ${s.tr_provider !== 'google' ? 'selected' : ''}>MyMemory (gratis, sin cuenta)</option>
+            <option value="google" ${s.tr_provider === 'google' ? 'selected' : ''}>Google Translate (con clave)</option>
+          </select></label>
+          <p class="help">MyMemory es gratis y traduce unos 50.000 caracteres al día, de sobra para una carta. Google traduce mejor y regala 500.000 caracteres al mes: crea una clave de «Cloud Translation API» en console.cloud.google.com.</p>
+          <label>Clave de Google <input name="tr_google_key" type="password" autocomplete="off" placeholder="${s.tr_google_key_set ? SAVED_SECRET : 'AIza…'}"><span class="help">Solo hace falta con Google Translate. Se guarda cifrada.</span></label>
+          <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`),
+      sec('seo', 'Google y estadísticas', 'Descripción en Google, Search Console, Analytics y Píxel de Meta', `
+        <form class="form" data-form="seo" novalidate>
+          <label>Descripción para Google <textarea name="seo_description" rows="3" maxlength="300" placeholder="Restaurante de cocina de fuego y coctelería en Vigo. Reserva mesa online.">${esc(s.seo_description)}</textarea><span class="help">Es el texto que sale en Google debajo del nombre. Unas 150 letras, con el tipo de cocina y la ciudad.</span></label>
+          ${field('gsc_verify', 'Código de Google Search Console', 'text', 'placeholder="Pega aquí el código o la etiqueta meta" autocapitalize="off"')}
+          ${field('ga_id', 'Google Analytics 4 (ID de medición)', 'text', 'placeholder="G-AB12CD34EF" autocapitalize="characters"')}
+          ${field('gtm_id', 'Google Tag Manager (opcional)', 'text', 'placeholder="GTM-AB12CD3" autocapitalize="characters"')}
+          ${field('pixel_id', 'Píxel de Meta: Facebook e Instagram (opcional)', 'text', 'placeholder="123456789012345" inputmode="numeric"')}
+          <p class="help">Analytics y los píxeles solo se activan para los visitantes que acepten las cookies. El mapa del sitio para Google está en ${esc(S.base.replace(/^https?:\/\//, ''))}/sitemap.xml</p>
+          <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`),
     ].join('');
 
     const tecnica = !admin ? '' : `
@@ -1406,7 +1406,7 @@
           <button class="btn btn-main" type="submit">Guardar</button>
         </form>`)}
       <details class="set-adv" data-adv ${S.advOpen ? 'open' : ''}>
-        <summary><span>Avanzado<small>Correo, traductor, Google, estadísticas y WhatsApp automático. Se configura una vez y no hace falta volver a tocarlo.</small></span></summary>
+        <summary><span>Avanzado<small>Correo, WhatsApp automático, traductor, Google y estadísticas. Se configura una vez y no hace falta volver a tocarlo.</small></span></summary>
         <div class="set-adv-body">${avanzado}</div>
       </details>`;
 
@@ -1440,7 +1440,7 @@
       ['local', 'Local', 'Información del local', 'Lo que ven tus clientes en la web: nombre, contacto, fotos y datos legales.', local],
       ['horarios', 'Horarios', 'Horarios', 'Cuándo abres y cuándo funciona la cocina.', horarios],
       ['reservas', 'Reservas', 'Reglas de reservas', 'Cómo y cuándo pueden reservar tus clientes por internet.', reservas],
-      ['tecnica', 'Técnico', 'Configuración técnica', 'Idiomas de la web y, en «Avanzado», el correo, el traductor, Google y WhatsApp.', tecnica],
+      ['tecnica', 'Técnico', 'Configuración técnica', 'Idiomas de la web y, en «Avanzado», el correo, el WhatsApp automático, el traductor y Google.', tecnica],
       ['cuenta', 'Cuenta', 'Tu cuenta y tu equipo', 'Usuarios, avisos en el móvil, contraseña y sesión.', cuenta],
     ].filter((p) => p[4].trim());
     if (!panes.some((p) => p[0] === S.setTab)) S.setTab = panes[0][0];
@@ -1777,7 +1777,7 @@
       if (btn.dataset.orig) { btn.dataset.label = btn.dataset.orig; delete btn.dataset.orig; }
       toast($('[data-adv]', $('#view')) && $('[data-adv]', $('#view')).contains(f) ? 'Guardado' : 'Guardado. Ya se ve en la web.');
       // Las claves y contraseñas no vuelven del servidor: se vacía la casilla y se avisa de que ya hay una guardada
-      $$('input[type=password][name]', f).forEach((pw) => { if (pw.value) { pw.value = ''; pw.placeholder = SAVED_SECRET; } });
+      $$('input[type=password][name]', f).forEach((pw) => { if (pw.value) { pw.value = ''; pw.placeholder = pw.dataset.saved || SAVED_SECRET; } });
       if (kind === 'idiomas' || kind === 'traductor') loadTrStatus();
     } catch (err) { toast(err.message, 'err'); }
     busy(btn, false);
