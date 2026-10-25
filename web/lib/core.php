@@ -27,6 +27,7 @@ function installed(): bool
     }
     ensure_schema();
     purge_old_reservations();
+    try { wa_reminders_run(); } catch (Throwable $e) { error_log('[restaurante] Recordatorios: ' . $e->getMessage()); }
     return $ok = true;
 }
 
@@ -56,7 +57,7 @@ function purge_old_reservations(bool $force = false): int
 }
 
 /** Actualiza la base de datos de instalaciones anteriores sin perder datos. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 /** Versión de las condiciones y la privacidad: se guarda con cada aceptación. Súbela si cambias los textos. */
 const LEGAL_VERSION = '2026-10-22';
 function ensure_schema(): void
@@ -140,6 +141,10 @@ function ensure_schema(): void
         try { db()->exec("ALTER TABLE reservations ADD COLUMN lang CHAR(2) NOT NULL DEFAULT 'es'"); } catch (Throwable $e) { /* ya existe */ }
     }
     // v8: peticiones de borrado de datos (la tabla erase_requests la crea schema_sql)
+    if ($v < 9) {
+        // v9: recordatorios por WhatsApp ya enviados (bits de WA_REMINDERS)
+        try { db()->exec('ALTER TABLE reservations ADD COLUMN reminders TINYINT NOT NULL DEFAULT 0'); } catch (Throwable $e) { /* ya existe */ }
+    }
     q("DELETE FROM settings WHERE k = '_schema'");
     q("INSERT INTO settings (k, v) VALUES ('_schema', ?)", [(string)SCHEMA_VERSION]);
 }
@@ -243,6 +248,14 @@ const SETTINGS_DEFAULTS = [
     'smtp_port'     => 465,
     'smtp_user'     => '',     // dirección de Gmail
     'smtp_pass'     => '',     // contraseña de aplicación, guardada cifrada; nunca sale hacia la app
+    // WhatsApp automático con la API de Meta (ver whatsapp.php)
+    'wa_on'         => false,
+    'wa_phone_id'   => '',     // identificador del número de teléfono (Phone Number ID)
+    'wa_token'      => '',     // token de acceso de Meta, guardado cifrado; nunca sale hacia la app
+    'wa_template'   => '',     // nombre de la plantilla aprobada (vacío = texto libre, solo dentro de las 24 h)
+    'wa_template_lang' => 'es', // idioma por defecto de la plantilla (es, es_ES, en_US…)
+    'wa_remind_on'  => false,  // recordatorio 24 h y 12 h antes de cada reserva confirmada
+    'wa_remind_template' => '', // plantilla aprobada del recordatorio (vacío = texto libre)
     // Horario: día ISO (1 = lunes … 7 = domingo) => lista de franjas [inicio, fin]
     'hours'         => [
         '1' => [],
@@ -311,6 +324,29 @@ function settings_save(array $values): array
             $clean[$k] = enc(mb_substr($v, 0, 200));
             continue;
         }
+        if ($k === 'wa_token') {
+            // Vacío = dejar el que había
+            $v = preg_replace('/\s+/', '', (string)$v);
+            if ($v === '') continue;
+            $clean[$k] = enc(mb_substr($v, 0, 1000));
+            continue;
+        }
+        if ($k === 'wa_phone_id') {
+            $clean[$k] = substr(preg_replace('/\D/', '', (string)$v), 0, 30);
+            continue;
+        }
+        if ($k === 'wa_template' || $k === 'wa_remind_template') {
+            $v = mb_strtolower(trim((string)$v));
+            if ($v !== '' && !preg_match('/^[a-z0-9_]{1,512}$/', $v)) throw new ValidationError('El nombre de la plantilla solo lleva minúsculas, números y guiones bajos, como en Meta');
+            $clean[$k] = $v;
+            continue;
+        }
+        if ($k === 'wa_template_lang') {
+            $v = trim((string)$v);
+            if ($v !== '' && !preg_match('/^[a-z]{2,3}(_[A-Z]{2})?$/', $v)) throw new ValidationError('El idioma de la plantilla va como en Meta: es, es_ES, en_US…');
+            $clean[$k] = $v ?: 'es';
+            continue;
+        }
         if ($k === 'smtp_user') {
             $v = mb_strtolower(trim((string)$v));
             if ($v !== '' && !filter_var($v, FILTER_VALIDATE_EMAIL)) throw new ValidationError('La dirección de Gmail no parece correcta');
@@ -354,6 +390,19 @@ function settings_save(array $values): array
         $cur = settings();
         if (($clean['smtp_user'] ?? $cur['smtp_user']) === '' || (($clean['smtp_pass'] ?? $cur['smtp_pass']) === '')) {
             throw new ValidationError('Para activarlo pon tu dirección de Gmail y la contraseña de aplicación');
+        }
+    }
+    if (!empty($clean['wa_on'])) {
+        $cur = settings();
+        if (($clean['wa_phone_id'] ?? $cur['wa_phone_id']) === '' || (($clean['wa_token'] ?? $cur['wa_token']) === '')) {
+            throw new ValidationError('Para activar el WhatsApp automático pon el identificador del número y el token de Meta');
+        }
+        if (!function_exists('curl_init')) throw new ValidationError('El servidor no tiene cURL activado: pídelo en el hosting');
+    }
+    if (!empty($clean['wa_remind_on'])) {
+        $cur = settings();
+        if (($clean['wa_phone_id'] ?? $cur['wa_phone_id']) === '' || (($clean['wa_token'] ?? $cur['wa_token']) === '')) {
+            throw new ValidationError('Para activar los recordatorios pon el identificador del número y el token de Meta');
         }
     }
 
@@ -484,7 +533,7 @@ function h($v): string
 
 /* ---------- Correo ---------- */
 
-/** Ajustes para la app de gestión: sin la contraseña del correo. */
+/** Ajustes para la app de gestión: sin la contraseña del correo ni las claves. */
 function settings_admin(): array
 {
     $s = settings();
@@ -492,6 +541,10 @@ function settings_admin(): array
     $s['smtp_pass'] = '';
     $s['tr_google_key_set'] = $s['tr_google_key'] !== '';
     $s['tr_google_key'] = '';
+    $s['wa_token_set'] = $s['wa_token'] !== '';
+    $s['wa_token'] = '';
+    $s['wa_error'] = (string)(q("SELECT v FROM settings WHERE k = '_wa_error'")->fetchColumn() ?: '');
+    $s['cron_url'] = base_url() . '/cron.php?key=' . cron_key();
     $s['smtp_error'] = (string)(q("SELECT v FROM settings WHERE k = '_smtp_error'")->fetchColumn() ?: '');
     return $s;
 }

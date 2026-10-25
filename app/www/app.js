@@ -455,10 +455,14 @@
       </div></article>`;
   }
 
-  /** Botón que abre WhatsApp con el mensaje y el enlace ya escritos para el cliente. */
+  /** Botón que abre WhatsApp con el mensaje y el enlace ya escritos para el cliente (o lo manda solo con la API de Meta). */
   function waButton(r, label, big) {
     if (!r.wa_url) {
       return `<button class="btn ${big ? '' : 'btn-sm '}b-ok" data-status="confirmada" data-id="${r.id}">Confirmar</button>`;
+    }
+    if (r.wa_auto) {
+      label = r.status === 'pendiente' ? 'Aceptar y enviar WhatsApp automático' : 'Reenviar WhatsApp automático';
+      return `<button class="btn ${big ? '' : 'btn-sm '}b-wa" data-wa-auto="${r.id}">${ICON.wa}<span>${esc(label)}</span></button>`;
     }
     return `<a class="btn ${big ? '' : 'btn-sm '}b-wa" href="${esc(r.wa_url)}" target="_blank" rel="noopener" data-wa-send="${r.id}">${ICON.wa}<span>${esc(label)}</span></a>`;
   }
@@ -631,6 +635,8 @@
       btns.push(waButton(r, 'Confirmar por WhatsApp', true), `<button class="btn btn-quiet" data-s="rechazada">Rechazar</button>`);
     } else if (r.status === 'esperando') {
       btns.push(waButton(r, 'Reenviar WhatsApp', true), `<button class="btn btn-quiet" data-s="confirmada">Ya ha confirmado</button>`);
+      // Si el envío automático falla, se puede mandar a mano como antes
+      if (r.wa_auto) btns.push(`<a class="btn btn-quiet" href="${esc(r.wa_url)}" target="_blank" rel="noopener" data-wa-send="${r.id}">Enviar a mano</a>`);
     } else if (r.status === 'confirmada') {
       btns.push(`<button class="btn btn-quiet" data-s="cancelada">Cancelar reserva</button>`);
     } else {
@@ -658,6 +664,7 @@
         ${edit ? '<button class="btn btn-quiet" data-edit>Editar datos</button><button class="btn btn-danger" data-del>Borrar reserva</button>' : '<p class="help">Tu usuario puede ver las reservas, pero no cambiarlas.</p>'}
       </div>`, (body) => {
       $$('[data-wa-send]', body).forEach((a) => a.addEventListener('click', () => { markSent(r.id); closeSheet(); }));
+      $$('[data-wa-auto]', body).forEach((b) => b.addEventListener('click', () => autoSend(r.id, b)));
       $$('[data-s]', body).forEach((b) => b.addEventListener('click', async () => {
         if (b.dataset.s === 'rechazada') { rejectFlow(r); return; }
         const q2 = { cancelada: `¿Cancelar la reserva de ${r.name}?` }[b.dataset.s];
@@ -734,6 +741,23 @@
       setTimeout(render, 400);
       poll();
     } catch (err) { toast(err.message, 'err'); }
+  }
+
+  /** Acepta la reserva y el servidor manda el WhatsApp con la API de Meta (o lo reenvía si ya esperaba). */
+  async function autoSend(id, btn) {
+    const r = S.res[id];
+    if (btn) busy(btn, true, 'Enviando…');
+    try {
+      const x = r && r.status === 'esperando'
+        ? await api('reservation_whatsapp', { body: { id } })
+        : await api('reservation_status', { body: { id, status: 'esperando' } });
+      S.res[id] = x;
+      if (x.wa_sent) toast('WhatsApp enviado. La reserva queda esperando a que el cliente confirme.');
+      else toast(`No se pudo enviar el WhatsApp: ${x.wa_error || 'error desconocido'}. Abre la reserva y pulsa «Enviar a mano».`, 'err');
+      closeSheet();
+      render();
+      poll();
+    } catch (err) { toast(err.message, 'err'); if (btn) busy(btn, false); }
   }
 
   function editReservation(r, date) {
@@ -1339,6 +1363,36 @@
           <button class="btn btn-line" type="button" data-mail-test>Enviar un email de prueba</button>
           <p class="help">La prueba llega a «${esc(s.notify_email || s.email || 'el email de avisos')}». Gmail permite unos 500 emails al día, de sobra para un restaurante.</p>
         </form>`)}
+      ${sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on ? [s.wa_on && 'sale solo al aceptar', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
+        <form class="form" data-form="whatsapp" novalidate>
+          <p class="help">Con la API oficial de WhatsApp Business (Meta), al aceptar una reserva el mensaje con el enlace para confirmar le llega al cliente solo. Si algo falla, puedes seguir mandándolo a mano.</p>
+          <ol class="steps">
+            <li>En <a href="https://business.facebook.com" target="_blank" rel="noopener">business.facebook.com</a> crea una app de WhatsApp y registra el número del restaurante.</li>
+            <li>Crea una plantilla de categoría <b>Utilidad</b> con 5 variables: {{1}} nombre, {{2}} día, {{3}} hora, {{4}} personas y {{5}} enlace. Por ejemplo: «Hola {{1}}, tenemos mesa el {{2}} a las {{3}} ({{4}}). Confírmala aquí: {{5}}». Espera a que Meta la apruebe.</li>
+            <li>Copia el <b>identificador del número de teléfono</b> y un <b>token de acceso permanente</b> (de un usuario del sistema) y pégalos aquí.</li>
+          </ol>
+          ${field('wa_phone_id', 'Identificador del número de teléfono', 'text', 'placeholder="123456789012345" inputmode="numeric" autocomplete="off"')}
+          <label>Token de acceso de Meta <input name="wa_token" type="password" autocomplete="new-password" placeholder="${s.wa_token_set ? 'Guardado (escribe otro para cambiarlo)' : 'EAAG…'}"><span class="help">Se guarda cifrado y nunca vuelve a la app.</span></label>
+          <div class="row">
+            ${field('wa_template', 'Nombre de la plantilla', 'text', 'placeholder="confirmar_reserva" autocapitalize="off" autocomplete="off"')}
+            ${field('wa_template_lang', 'Idioma de la plantilla', 'text', 'placeholder="es" autocapitalize="off" autocomplete="off"')}
+          </div>
+          <p class="help">Si la plantilla está traducida en Meta a inglés (en) o portugués (pt_PT), al cliente le llega en su idioma. Sin plantilla, Meta solo entrega el mensaje si el cliente te ha escrito en las últimas 24 horas.</p>
+          <label class="switch-row">Enviar el WhatsApp automáticamente al aceptar <span class="sw"><input type="checkbox" name="wa_on" ${s.wa_on ? 'checked' : ''}><span></span></span></label>
+          <p><b>Recordatorios</b></p>
+          <p class="help">A las reservas confirmadas les llega un WhatsApp 24 horas y 12 horas antes con el día, la hora y las personas. Si confirman con menos tiempo, solo les llega el que aún toque.</p>
+          ${field('wa_remind_template', 'Plantilla del recordatorio', 'text', 'placeholder="recordatorio_reserva" autocapitalize="off" autocomplete="off"')}
+          <p class="help">Otra plantilla de Utilidad con 4 variables: {{1}} nombre, {{2}} día, {{3}} hora y {{4}} personas. Por ejemplo: «Hola {{1}}, te recordamos tu reserva el {{2}} a las {{3}} ({{4}}). ¡Te esperamos!». Usa el mismo idioma que la de confirmar.</p>
+          <label class="switch-row">Enviar recordatorios 24 h y 12 h antes <span class="sw"><input type="checkbox" name="wa_remind_on" ${s.wa_remind_on ? 'checked' : ''}><span></span></span></label>
+          <details class="adv"><summary>Tarea programada (opcional)</summary>
+            <p class="help">Los recordatorios salen solos mientras alguien visita la web o usa la app. Para que salgan a su hora aunque no entre nadie, crea en Hostinger (Avanzado → Cron Jobs) una tarea cada 10 minutos que abra esta dirección:</p>
+            <label>Dirección para el cron <input type="text" readonly value="${esc(s.cron_url || '')}"></label>
+          </details>
+          ${s.wa_error ? `<p class="err-box">Último error al enviar: ${esc(s.wa_error)}</p>` : ''}
+          <button class="btn btn-main" type="submit">Guardar</button>
+          <button class="btn btn-line" type="button" data-wa-test>Enviar un WhatsApp de prueba</button>
+          <p class="help">La prueba llega al WhatsApp del restaurante (${esc(s.whatsapp || s.phone || 'el de Contacto')}).</p>
+        </form>`)}
       ` : '<p class="set-intro">Tu usuario no puede cambiar los ajustes de la web. Aquí tienes los avisos y tu contraseña.</p>'}
       ${isAdmin() ? sec('usuarios', 'Usuarios', 'Quién entra en la app y qué puede hacer', `
         <p class="help">Todos los usuarios pueden ver las reservas y la carta. Tú decides quién puede cambiar cada cosa.</p>
@@ -1423,6 +1477,14 @@
       try { const r = await api('mail_test', { body: {} }); toast(`Email de prueba enviado a ${r.to}. Míralo (y la carpeta de spam).`); }
       catch (err) { toast(err.message, 'err'); render(); }
       busy(mt, false);
+    });
+    const wt = $('[data-wa-test]', view);
+    if (wt) wt.addEventListener('click', async () => {
+      if (wt.closest('form').dataset.dirty) { toast('Guarda primero los cambios', 'err'); return; }
+      busy(wt, true, 'Enviando…');
+      try { const r = await api('whatsapp_test', { body: {} }); toast(`WhatsApp de prueba enviado al +${r.to}.`); }
+      catch (err) { toast(err.message, 'err'); }
+      busy(wt, false);
     });
     $('[data-notif]', view).addEventListener('click', async () => {
       const ok = await askNotifications();
@@ -1664,7 +1726,8 @@
       delete f.dataset.dirty;
       btn.classList.remove('is-dirty');
       if (btn.dataset.orig) { btn.dataset.label = btn.dataset.orig; delete btn.dataset.orig; }
-      toast(kind === 'correo' ? 'Guardado' : 'Guardado. Ya se ve en la web.');
+      toast(kind === 'correo' || kind === 'whatsapp' ? 'Guardado' : 'Guardado. Ya se ve en la web.');
+      if (kind === 'whatsapp') { f.wa_token.value = ''; if (S.settings.wa_token_set) f.wa_token.placeholder = 'Guardado (escribe otro para cambiarlo)'; }
       if (kind === 'correo') { const pw = $('[name=smtp_pass]', f); if (pw) { pw.value = ''; pw.placeholder = 'Guardada (escribe otra para cambiarla)'; } }
       if (kind === 'idiomas') { f.tr_google_key.value = ''; if (S.settings.tr_google_key_set) f.tr_google_key.placeholder = 'Guardada (escribe otra para cambiarla)'; loadTrStatus(); }
     } catch (err) { toast(err.message, 'err'); }
@@ -1677,6 +1740,8 @@
     if (t.closest('[data-retry]')) return render();
     const wa = t.closest('[data-wa-send]');
     if (wa) { e.stopPropagation(); markSent(Number(wa.dataset.waSend)); return; }
+    const wauto = t.closest('[data-wa-auto]');
+    if (wauto) { e.stopPropagation(); autoSend(Number(wauto.dataset.waAuto), wauto); return; }
     const hd = t.closest('[data-hoy-day]');
     if (hd) { S.hoyDay = hd.dataset.hoyDay; setTitle(S.hoyDay === todayISO() ? 'Hoy' : 'Reservas'); if (can('reservas')) setFab('Nueva reserva', () => editReservation(null, S.hoyDay)); return renderHoyBody($('#view')); }
     const jp = t.closest('[data-jump]');

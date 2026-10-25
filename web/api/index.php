@@ -160,6 +160,10 @@ try {
             only_post();
             require_perm($user, 'reservas');
             out(set_reservation_status($id, (string)($in['status'] ?? '')));
+        case 'reservation_whatsapp':
+            only_post();
+            require_perm($user, 'reservas');
+            out(resend_reservation_whatsapp($id));
         case 'reservation_save':
             only_post();
             require_perm($user, 'reservas');
@@ -270,6 +274,11 @@ try {
             if (!$s['smtp_on']) throw new ValidationError('Activa primero el envío con tu cuenta y guarda');
             send_mail($to, "Prueba de email de {$s['name']}", "¡Funciona! Los emails de la web ya salen desde {$s['smtp_user']}.\n\nA partir de ahora los clientes recibirán desde esta cuenta el enlace para activar su cuenta y los avisos de sus reservas.", true);
             out(['to' => $to]);
+        case 'whatsapp_test':
+            only_post();
+            require_perm($user, 'ajustes');
+            $s = settings();
+            out(['to' => wa_test(trim((string)($in['to'] ?? '')) ?: ($s['whatsapp'] ?: $s['phone']))]);
         case 'password':
             only_post();
             change_password($user, $in);
