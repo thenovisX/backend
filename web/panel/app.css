@@ -248,6 +248,26 @@ a { color: inherit; }
 .set[open] > summary::after { transform: rotate(90deg); }
 .set-body { padding: 0 16px 16px; display: grid; gap: 12px; }
 .set-body .help { margin: 0; }
+
+/* Ajustes: pestañas por categoría, «Avanzado» y casillas con unidad */
+.set-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.set-tabs button { flex: 1 0 auto; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--linea); background: var(--papel); color: var(--mar); font: inherit; font-weight: 600; font-size: .92rem; cursor: pointer; }
+.set-tabs button[aria-selected="true"] { background: var(--mar); border-color: var(--mar); color: #fff; }
+.set-tabs[hidden], .set-pane[hidden], .set-adv[hidden] { display: none; }
+.set-pane-h { margin: 4px 0 2px; font-size: 1.15rem; }
+.set-pane > .set-intro { font-size: .92rem; }
+.is-searching .set-pane { margin-bottom: 20px; }
+.set-adv { margin-top: 20px; border: 1.5px dashed #BCC5C1; border-radius: 16px; }
+.set-adv > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; font-weight: 700; color: var(--granito); }
+.set-adv > summary::-webkit-details-marker { display: none; }
+.set-adv > summary small { display: block; font-weight: 400; font-size: .84rem; margin-top: 2px; }
+.set-adv > summary::after { content: "›"; font-size: 1.6rem; line-height: 1; transition: transform .2s; }
+.set-adv[open] > summary::after { transform: rotate(90deg); }
+.set-adv-body { padding: 0 10px 2px; }
+.set-adv-body .set { border: 1px solid var(--linea); }
+.unit { display: flex; align-items: center; gap: 8px; }
+.unit input { max-width: 140px; }
+.unit i { font-style: normal; font-weight: 400; color: var(--granito); }
 .wph-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .wph { background: var(--fondo); border-radius: 12px; padding: 8px; display: grid; gap: 6px; align-content: start; }
 .wph img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; background: #dfe4e2; }

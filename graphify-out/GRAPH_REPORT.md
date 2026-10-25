@@ -1,129 +1,146 @@
 # Graph Report - backend  (2026-10-25)
 
 ## Corpus Check
-- cluster-only mode — file stats not available
+- 77 files · ~96,528 words
+- Verdict: corpus is large enough that graph structure adds value.
+- Unclassified: 33 file(s) not represented in the graph (top: .xml 10, (none) 8, .css 4)
 
 ## Summary
-- 599 nodes · 1589 edges · 55 communities (11 shown, 44 thin omitted)
-- Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 431 edges (avg confidence: 0.85)
+- 670 nodes · 1779 edges · 59 communities (14 shown, 45 thin omitted)
+- Extraction: 71% EXTRACTED · 29% INFERRED · 0% AMBIGUOUS · INFERRED: 511 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a3ecd525`
+- Built from commit: `67380ec2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- Community 0
-- Community 1
-- Community 2
-- Community 3
-- Community 4
-- Community 5
-- Community 6
-- Community 7
-- Community 8
-- Community 9
-- Community 10
-- Community 11
-- Community 12
-- Community 14
-- Community 15
-- Community 17
-- Community 18
-- Community 21
-- Community 22
+- q
+- settings
+- www/app.js
+- panel/app.js
+- lib/carta.php
+- with
+- restaurante.js
+- package.json
+- hostinger.yml
+- traductor.php
+- ExampleInstrumentedTest.java
+- consent.js
+- make_icons.py
+- MainActivity.java
+- Cómo hacer un tema
+- www/sw.js
+- build-panel.sh
+- panel/sw.js
+- web/sw.js
+- whatsapp.php
+- API
+- CLAUDE.md
 
 ## God Nodes (most connected - your core abstractions)
-1. `q()` - 82 edges
-2. `settings()` - 55 edges
-3. `ValidationError` - 38 edges
-4. `t()` - 31 edges
-5. `api()` - 30 edges
-6. `api()` - 30 edges
-7. `render()` - 24 edges
-8. `render()` - 24 edges
-9. `lang()` - 23 edges
-10. `toast()` - 21 edges
+1. `q()` - 86 edges
+2. `settings()` - 65 edges
+3. `ValidationError` - 40 edges
+4. `t()` - 33 edges
+5. `api()` - 31 edges
+6. `api()` - 31 edges
+7. `render()` - 25 edges
+8. `lang()` - 25 edges
+9. `render()` - 25 edges
+10. `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `{closure#3}()` --calls--> `ValidationError`  [INFERRED]
-  web/lib/carta.php → web/lib/core.php
-- `ensure_schema()` --calls--> `schema_sql()`  [INFERRED]
-  web/lib/core.php → web/lib/schema.php
-- `move_category()` --calls--> `q()`  [INFERRED]
-  web/lib/carta.php → web/lib/core.php
-- `{closure#2}()` --calls--> `base_url()`  [INFERRED]
-  web/lib/carta.php → web/lib/core.php
-- `menus_button()` --calls--> `settings()`  [INFERRED]
-  web/lib/carta.php → web/lib/core.php
+- `Datos del restaurante: `$s`` --references--> `h()`  [INFERRED]
+  TEMA.md → web/lib/core.php
+- `Fotos ampliables` --references--> `photo_img()`  [INFERRED]
+  TEMA.md → web/lib/fotos.php
+- `Públicas (las usa la web)` --references--> `erase_request()`  [INFERRED]
+  API.md → web/lib/borrado.php
+- `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` --references--> `web_photo_reset()`  [INFERRED]
+  API.md → web/lib/carta.php
+- `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` --references--> `menu_save()`  [INFERRED]
+  API.md → web/lib/carta.php
 
 ## Import Cycles
 - None detected.
 
-## Communities (55 total, 44 thin omitted)
+## Communities (59 total, 45 thin omitted)
 
-### Community 0 - "Community 0"
+### Community 0 - "q"
+Cohesion: 0.05
+Nodes (111): Gestión (app; cabecera `X-Token`, que se obtiene con `login`), active_admins(), change_password(), login(), logout(), request_token(), require_admin(), require_auth() (+103 more)
+
+### Community 1 - "settings"
 Cohesion: 0.06
-Nodes (100): active_admins(), change_password(), login(), logout(), request_token(), require_admin(), require_auth(), require_perm() (+92 more)
+Nodes (65): Funciones disponibles, Idiomas, La carta: `$carta`, Menús y carta principal, public_info(), {closure#1}(), {closure#3}(), {closure#4}() (+57 more)
 
-### Community 1 - "Community 1"
-Cohesion: 0.06
-Nodes (74): public_info(), {closure#1}(), {closure#3}(), {closure#4}(), {closure#1}(), erase_url(), carta_on(), days_text() (+66 more)
-
-### Community 2 - "Community 2"
+### Community 2 - "www/app.js"
 Cohesion: 0.11
-Nodes (64): api(), askNotifications(), boot(), busy(), catOpen(), catOpenSave(), closeSheet(), dayStrip() (+56 more)
+Nodes (65): api(), askNotifications(), autoSend(), boot(), busy(), catOpen(), catOpenSave(), closeSheet() (+57 more)
 
-### Community 3 - "Community 3"
+### Community 3 - "panel/app.js"
 Cohesion: 0.11
-Nodes (64): api(), askNotifications(), boot(), busy(), catOpen(), catOpenSave(), closeSheet(), dayStrip() (+56 more)
+Nodes (65): api(), askNotifications(), autoSend(), boot(), busy(), catOpen(), catOpenSave(), closeSheet() (+57 more)
 
-### Community 4 - "Community 4"
-Cohesion: 0.10
-Nodes (33): allergen_list(), carta_toggle(), {closure#2}(), {closure#3}(), delete_dish(), dish_out(), get_dish(), menu_data() (+25 more)
+### Community 4 - "lib/carta.php"
+Cohesion: 0.09
+Nodes (41): allergen_list(), {closure#2}(), {closure#3}(), delete_dish(), dish_out(), get_dish(), menu_data(), menu_delete() (+33 more)
 
-### Community 5 - "Community 5"
+### Community 5 - "with"
 Cohesion: 0.06
 Nodes (31): runs-on, steps, concurrency, cancel-in-progress, group, ANDROID_KEY_PASSWORD, ANDROID_KEYSTORE_PASSWORD, jobs (+23 more)
 
-### Community 6 - "Community 6"
+### Community 6 - "restaurante.js"
 Cohesion: 0.17
 Nodes (30): addDays(), api(), callStatus(), emit(), esc(), isClosed(), iso(), lbBuild() (+22 more)
 
-### Community 7 - "Community 7"
+### Community 7 - "package.json"
 Cohesion: 0.12
 Nodes (20): dependencies, @capacitor/android@^8.5.3, @capacitor/core@^8.5.3, @capacitor/local-notifications@^8.3.1, description, devDependencies, @capacitor/assets@^3.0.5, @capacitor/cli@^8.5.3 (+12 more)
 
-### Community 8 - "Community 8"
+### Community 8 - "hostinger.yml"
 Cohesion: 0.10
 Nodes (19): concurrency, cancel-in-progress, group, jobs, publicar, name, permissions, contents (+11 more)
 
-### Community 9 - "Community 9"
+### Community 9 - "traductor.php"
 Cohesion: 0.19
 Nodes (12): tr_hash(), {closure#3}(), tr_after_save(), tr_http(), tr_set(), tr_split(), translatable_texts(), translate_batch() (+4 more)
 
-### Community 11 - "Community 11"
+### Community 11 - "consent.js"
 Cohesion: 0.36
 Nodes (9): apply(), choose(), close(), L(), loadScript(), read(), save(), show() (+1 more)
 
+### Community 15 - "Cómo hacer un tema"
+Cohesion: 0.06
+Nodes (30): 1. Subir la web a Hostinger, 2. App de gestión, 3. Enviar los emails desde Gmail, 4. WhatsApp automático (opcional, API de Meta), Backend para webs de restaurantes, Cómo funcionan las reservas, Desarrollo, Empezar la web de un cliente nuevo (+22 more)
+
+### Community 55 - "whatsapp.php"
+Cohesion: 0.20
+Nodes (18): {closure#1}(), {closure#2}(), {closure#4}(), {closure#5}(), {closure#6}(), {closure#7}(), wa_creds_ready(), wa_deliver() (+10 more)
+
+### Community 56 - "API"
+Cohesion: 0.50
+Nodes (3): API, Clientes (cookie de sesión, mismo dominio), Públicas (las usa la web)
+
 ## Knowledge Gaps
-- **44 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **45 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `q()` connect `Community 0` to `Community 1`, `Community 4`, `Community 9`?**
-  _High betweenness centrality (0.064) - this node is a cross-community bridge._
-- **Are the 71 inferred relationships involving `q()` (e.g. with `active_admins()` and `change_password()`) actually correct?**
-  _`q()` has 71 INFERRED edges - model-reasoned connections that need verification._
-- **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.05654465175900869 - nodes in this community are weakly interconnected._
-- **Why does `settings()` connect `Community 1` to `Community 0`, `Community 9`, `Community 4`?**
-  _High betweenness centrality (0.050) - this node is a cross-community bridge._
-- **Are the 47 inferred relationships involving `settings()` (e.g. with `public_info()` and `login()`) actually correct?**
-  _`settings()` has 47 INFERRED edges - model-reasoned connections that need verification._
-- **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.05568039950062422 - nodes in this community are weakly interconnected._
-- **Why does `t()` connect `Community 1` to `Community 0`?**
-  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Why does `settings()` connect `settings` to `q`, `traductor.php`, `lib/carta.php`, `whatsapp.php`?**
+  _High betweenness centrality (0.068) - this node is a cross-community bridge._
+- **Are the 75 inferred relationships involving `q()` (e.g. with `active_admins()` and `change_password()`) actually correct?**
+  _`q()` has 75 INFERRED edges - model-reasoned connections that need verification._
+- **Should `q` be split into smaller, more focused modules?**
+  _Cohesion score 0.05120375807398708 - nodes in this community are weakly interconnected._
+- **Why does `q()` connect `q` to `settings`, `lib/carta.php`, `traductor.php`, `whatsapp.php`?**
+  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+- **Are the 57 inferred relationships involving `settings()` (e.g. with `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` and `public_info()`) actually correct?**
+  _`settings()` has 57 INFERRED edges - model-reasoned connections that need verification._
+- **Should `settings` be split into smaller, more focused modules?**
+  _Cohesion score 0.06361570918532944 - nodes in this community are weakly interconnected._
+- **Why does `Cómo hacer un tema` connect `Cómo hacer un tema` to `settings`?**
+  _High betweenness centrality (0.041) - this node is a cross-community bridge._
