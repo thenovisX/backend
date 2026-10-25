@@ -157,12 +157,6 @@ function maps_href(): string
     return 'https://www.google.com/maps/search/?api=1&query=' . urlencode(trim($s['name'] . ' ' . $s['address'] . ' ' . $s['city']));
 }
 
-function wa_number(string $t): string
-{
-    $n = preg_replace('/\D/', '', $t);
-    return strlen($n) === 9 ? '34' . $n : $n;
-}
-
 /** Enlace de WhatsApp del restaurante ('' si no tiene). */
 function wa_href(string $text = ''): string
 {
