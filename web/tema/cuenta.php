@@ -25,7 +25,7 @@ abrir(($cliente ? t('Mi cuenta') : t('Entrar')) . ' · ' . $s['name'], 'pagina')
         <label><?= t('Contraseña') ?> <input name="password" type="password" autocomplete="current-password" required></label>
         <p class="error" data-error role="alert"></p>
         <button class="boton boton-acento" type="submit"><?= t('Entrar') ?></button>
-        <p class="nota"><?= $s['email'] ? t('¿Has olvidado la contraseña? Escríbenos a %s desde el email de tu cuenta y te ayudamos.', '<a href="mailto:' . h($s['email']) . '">' . h($s['email']) . '</a>') : t('¿Has olvidado la contraseña? Escríbenos desde el email de tu cuenta y te ayudamos.') ?></p>
+        <p class="nota"><a href="recuperar.php"><?= t('¿Has olvidado la contraseña?') ?></a></p>
       </form>
       <form class="form" id="f-registro" data-api="c_register" <?= $registro ? '' : 'hidden' ?> novalidate>
         <label><?= t('Nombre') ?> <input name="name" autocomplete="name" maxlength="80" required></label>

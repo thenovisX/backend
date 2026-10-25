@@ -57,7 +57,7 @@ function purge_old_reservations(bool $force = false): int
 }
 
 /** Actualiza la base de datos de instalaciones anteriores sin perder datos. */
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 /** Versión de las condiciones y la privacidad: se guarda con cada aceptación. Súbela si cambias los textos. */
 const LEGAL_VERSION = '2026-10-22';
 function ensure_schema(): void
@@ -144,6 +144,15 @@ function ensure_schema(): void
     if ($v < 9) {
         // v9: recordatorios por WhatsApp ya enviados (bits de WA_REMINDERS)
         try { db()->exec('ALTER TABLE reservations ADD COLUMN reminders TINYINT NOT NULL DEFAULT 0'); } catch (Throwable $e) { /* ya existe */ }
+    }
+    if ($v < 10) {
+        // v10: email de los usuarios del panel para recuperar la contraseña (la tabla password_resets la crea schema_sql)
+        foreach ([
+            "ALTER TABLE users ADD COLUMN email VARCHAR(512) NOT NULL DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN email_idx VARCHAR(64) NOT NULL DEFAULT ''",
+        ] as $sql) {
+            try { db()->exec($sql); } catch (Throwable $e) { /* ya existe */ }
+        }
     }
     q("DELETE FROM settings WHERE k = '_schema'");
     q("INSERT INTO settings (k, v) VALUES ('_schema', ?)", [(string)SCHEMA_VERSION]);

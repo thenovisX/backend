@@ -47,6 +47,16 @@ try {
         case 'login':
             only_post();
             out(login($in));
+        case 'forgot':
+            only_post();
+            user_forgot($in);
+            out(true);
+        case 'reset_check':
+            only_post();
+            out(user_reset_check($in));
+        case 'reset':
+            only_post();
+            out(user_reset($in));
 
         /* Cuentas de clientes (cookie de sesión, solo desde la propia web) */
         case 'c_me':
@@ -65,6 +75,13 @@ try {
             only_post(); same_origin_only();
             customer_resend($in);
             out(true);
+        case 'c_forgot':
+            only_post(); same_origin_only();
+            customer_forgot($in);
+            out(true);
+        case 'c_reset':
+            only_post(); same_origin_only();
+            out(customer_reset($in));
         case 'c_export':
             $data = customer_export(require_customer());
             header('Content-Disposition: attachment; filename="mis-datos.json"');
@@ -96,6 +113,9 @@ try {
             out(true);
         case 'me':
             out(['user' => $user['username'], 'restaurant' => settings()['name'], 'today' => today(), 'me' => user_out($user)]);
+        case 'me_email':
+            only_post();
+            out(user_set_email($user, $in));
         case 'customers':
             require_admin($user);
             out(['customers' => customers_list(), 'erase' => erase_pending()]);

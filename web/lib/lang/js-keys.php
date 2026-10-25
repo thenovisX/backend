@@ -70,4 +70,5 @@ return [
     'Aceptar todas',
     'Usamos cookies necesarias para que la web funcione y, si nos das permiso, cookies de análisis para saber cómo se usa la web y mejorarla, y de publicidad para medir nuestros anuncios.',
     'Usamos cookies necesarias para que la web funcione y, si nos das permiso, cookies de análisis para saber cómo se usa la web y mejorarla.',
+    'Revisa tu email',
 ];
