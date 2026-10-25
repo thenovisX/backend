@@ -2,7 +2,7 @@
  * SDK de la web del restaurante. Lo carga body_end() en todas las páginas. Hace tres cosas:
  *
  * 1. Ventana de reserva: cualquier elemento con data-book la abre (no hace falta nada más).
- * 2. Cuenta del cliente: formularios con data-api="c_login|c_register|c_profile|c_delete", botones
+ * 2. Cuenta del cliente: formularios con data-api="c_login|c_register|c_profile|c_delete|c_forgot|c_reset", botones
  *    data-cancel="ID", data-confirm-res="ID", data-logout y data-resend. Ver TEMA.md.
  * 3. Instalar como app (data-install, data-install-ios, data-install-help, data-install-done).
  *
@@ -425,6 +425,13 @@
           if (ok) ok.hidden = false;
           $$('[data-registro-email]').forEach(function (el) { el.textContent = r.email; });
           $$('[data-resend]').forEach(function (b) { b.dataset.email = r.email; });
+          return;
+        }
+        if (f.dataset.api === 'c_forgot') {
+          // Misma respuesta exista o no la cuenta: se enseña el aviso de «revisa tu email»
+          f.hidden = true;
+          var sent = $('[data-forgot-ok]');
+          if (sent) sent.hidden = false; else toast(T('Revisa tu email'));
           return;
         }
         if (f.dataset.api === 'c_profile') {

@@ -13,6 +13,7 @@ Documento interno. Rellena los datos de contacto y guárdalo donde lo encuentres
 | Terceros sin necesidad | Tipografías y fotos servidas desde el propio hosting; Google Maps solo al pulsar «Mostrar el mapa»; analítica y píxeles solo con consentimiento |
 | Contraseña del correo (SMTP) | Cifrada en la base de datos y nunca enviada a la app |
 | Fuerza bruta | Bloqueo de 15 min tras 10 intentos (panel y clientes) |
+| Contraseña olvidada | Enlace por email con token aleatorio de 256 bits, de un solo uso y válido 1 hora; solo se guarda su huella. Pedir otro anula el anterior, como mucho 5 peticiones cada 15 min por IP y la respuesta no revela si la cuenta existe. En el panel, cambiarla cierra todas las sesiones de ese usuario |
 | Cuentas con emails ajenos | Doble opt-in: la cuenta no funciona hasta abrir el enlace del email |
 | Peticiones desde otras webs | Comprobación de origen y cookies `SameSite=Lax`, `HttpOnly`, `Secure` |
 | Inyección SQL | Todas las consultas usan sentencias preparadas |

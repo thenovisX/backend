@@ -25,6 +25,8 @@ Límite: 5 reservas por hora desde la misma conexión. `website` es un campo tra
 | `c_me` | GET | — (cliente con sesión o `null`) |
 | `c_register` | POST | `name`, `email`, `phone`?, `password`, `privacy: 1` → envía el email de activación |
 | `c_resend` | POST | `email` |
+| `c_forgot` | POST | `email` → si hay cuenta activada, envía el enlace para cambiar la contraseña (1 hora, un solo uso). Responde igual exista o no |
+| `c_reset` | POST | `t` (token del enlace), `password` → cambia la contraseña y deja al cliente dentro |
 | `c_login` | POST | `email`, `password` |
 | `c_logout` | POST | — |
 | `c_reservations` | GET | — (`upcoming`, `past`) |
@@ -41,6 +43,10 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | Ruta | Método | Datos |
 |---|---|---|
 | `login` | POST | `username`, `password` → `token` y `me` (rol y permisos) |
+| `forgot` | POST | (sin sesión) `username` (usuario o email) → envía el enlace `panel/#reset=…` al email del usuario o, si es administrador sin email, al de avisos del restaurante. Responde igual exista o no |
+| `reset_check` | POST | (sin sesión) `t` → `username` si el enlace sigue valiendo (no lo gasta) |
+| `reset` | POST | (sin sesión) `t`, `password` → cambia la contraseña y cierra todas las sesiones de ese usuario |
+| `me_email` | POST | `email` (vacío lo quita): email propio para recuperar la contraseña |
 | `logout`, `me` | POST / GET | — |
 | `users` | GET | (administrador) lista de usuarios y permisos posibles |
 | `customers` | GET | (administrador) cuentas de clientes (`customers`) y peticiones de borrado por teléfono pendientes (`erase`) |
@@ -48,7 +54,7 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `erase_whatsapp` | POST | (administrador) `id` de una petición de borrado: devuelve `wa_url` con el enlace de confirmación para el cliente |
 | `erase_dismiss` | POST | (administrador) `id`: descarta una petición de borrado |
 | `reject_info` | GET | `id` de una reserva: horas libres ese día cerca de la pedida (`slots`) y textos para rechazarla por WhatsApp (`text_slots` con `{horas}`, `text_none`, `wa_number`) |
-| `user_save` | POST | (administrador) `id`?, `username`, `name`, `password`?, `role` (`admin` o `staff`), `perms` (`reservas`, `carta`, `ajustes`), `active` |
+| `user_save` | POST | (administrador) `id`?, `username`, `name`, `email`?, `password`?, `role` (`admin` o `staff`), `perms` (`reservas`, `carta`, `ajustes`), `active` |
 | `user_delete` | POST | (administrador) `id` |
 | `reservations&from=&to=` | GET | reservas entre dos fechas |
 | `requests` | GET | `nuevas` y `esperando` |

@@ -1,6 +1,6 @@
 {
-  "0": "q",
-  "1": "settings",
+  "0": "core.php",
+  "1": "pagina.php",
   "2": "www/app.js",
   "3": "panel/app.js",
   "4": "lib/carta.php",
@@ -57,5 +57,18 @@
   "55": "whatsapp.php",
   "56": "API",
   "57": "CLAUDE.md",
-  "58": "cron.php"
+  "58": "cron.php",
+  "59": "reservas.php",
+  "60": "now",
+  "61": "q",
+  "62": "clientes.php",
+  "63": "settings",
+  "64": "t",
+  "65": "lang",
+  "66": "Cómo hacer un tema",
+  "67": "ValidationError",
+  "68": "fotos.php",
+  "69": "schema.php",
+  "70": "web/recuperar.php",
+  "71": "tema/recuperar.php"
 }

@@ -271,7 +271,7 @@
     });
   }
 
-  function renderLogin(error = '') {
+  function renderLogin(error = '', notice = '') {
     $('#app').innerHTML = `<section class="gate">
       <img class="gate-logo" src="icons/icon-192.png" alt="">
       <h1>${esc(S.restaurant || 'Gestión del restaurante')}</h1>
@@ -280,7 +280,9 @@
         <label>Usuario <input name="username" autocomplete="username" autocapitalize="off" required value="${esc(LS.get('user') || '')}"></label>
         <label>Contraseña <input name="password" type="password" autocomplete="current-password" required></label>
         ${error ? `<p class="err">${esc(error)}</p>` : ''}
+        ${notice ? `<p class="ok">${esc(notice)}</p>` : ''}
         <button class="btn btn-main btn-block" type="submit">Entrar</button>
+        <button class="link" type="button" id="forgot">¿Has olvidado la contraseña?</button>
         ${NATIVE ? `<button class="link" type="button" id="change-base">Cambiar la dirección de la web (${esc(S.base.replace(/^https?:\/\//, ''))})</button>` : ''}
       </form></section>`;
     const f = $('#login');
@@ -305,6 +307,65 @@
     });
     const cb = $('#change-base');
     if (cb) cb.addEventListener('click', () => renderSetup());
+    $('#forgot').addEventListener('click', () => renderForgot(f.username.value));
+  }
+
+  /* Recuperar la contraseña: se pide con el usuario o el email y llega un enlace de un solo uso (1 hora) */
+  function renderForgot(user = '', error = '') {
+    $('#app').innerHTML = `<section class="gate">
+      <img class="gate-logo" src="icons/icon-192.png" alt="">
+      <h1>Recuperar la contraseña</h1>
+      <p>Escribe tu usuario o tu email. Te mandaremos un enlace para elegir una contraseña nueva al email de tu usuario (si eres administrador y no tienes email puesto, al email de avisos del restaurante).</p>
+      <form id="forgot-f" class="form" novalidate>
+        <label>Usuario o email <input name="username" autocomplete="username" autocapitalize="off" required value="${esc(user)}"></label>
+        ${error ? `<p class="err">${esc(error)}</p>` : ''}
+        <button class="btn btn-main btn-block" type="submit">Enviar el enlace</button>
+        <button class="link" type="button" id="back-login">Volver a entrar</button>
+      </form></section>`;
+    const f = $('#forgot-f');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!f.username.value.trim()) return renderForgot('', 'Escribe tu usuario o tu email.');
+      busy($('button[type=submit]', f), true, 'Enviando…');
+      try {
+        await api('forgot', { body: { username: f.username.value.trim() } });
+        renderLogin('', 'Si el usuario existe y tiene email, te hemos mandado un enlace. Caduca en 1 hora. Mira también en spam.');
+      } catch (err) { renderForgot(f.username.value, err.message); }
+    });
+    $('#back-login').addEventListener('click', () => renderLogin());
+  }
+
+  async function renderReset(token) {
+    $('#app').innerHTML = `<section class="gate"><img class="gate-logo" src="icons/icon-192.png" alt=""><h1>Contraseña nueva</h1><p>Comprobando el enlace…</p></section>`;
+    let who;
+    try { who = await api('reset_check', { body: { t: token } }); }
+    catch (err) { return renderForgot('', err.message); }
+    $('#app').innerHTML = `<section class="gate">
+      <img class="gate-logo" src="icons/icon-192.png" alt="">
+      <h1>Contraseña nueva</h1>
+      <p>Elige la nueva contraseña del usuario «${esc(who.username)}». Al guardarla se cierran sus sesiones abiertas en otros móviles.</p>
+      <form id="reset-f" class="form" novalidate>
+        <label>Nueva contraseña <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <p class="hint">Mínimo 8 caracteres.</p>
+        <p class="err" hidden></p>
+        <button class="btn btn-main btn-block" type="submit">Guardar contraseña</button>
+      </form></section>`;
+    const f = $('#reset-f');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('button[type=submit]', f);
+      busy(btn, true);
+      try {
+        const r = await api('reset', { body: { t: token, password: f.password.value } });
+        LS.set('user', r.username);
+        renderLogin('', 'Contraseña cambiada. Ya puedes entrar con la nueva.');
+      } catch (err) {
+        const box = $('.err', f);
+        box.textContent = err.message;
+        box.hidden = false;
+        busy(btn, false);
+      }
+    });
   }
 
   function logoutLocal() {
@@ -1421,11 +1482,15 @@
       ${sec('avisos', 'Avisos de reservas', 'Nuevas, confirmadas y canceladas, en este móvil', `
         <p class="help">Con la app abierta (o en segundo plano) revisa cada 30 segundos si hay reservas nuevas, reservas que el cliente ha confirmado y reservas que el cliente ha cancelado, y te avisa con una notificación. Además, cada reserva llega por email a «${esc(s.notify_email || s.email || 'el email de avisos')}».</p>
         <button class="btn btn-line btn-sm" type="button" data-notif>Activar avisos en este móvil</button>`)}
-      ${sec('password', 'Contraseña', 'Cambiar la contraseña de la app', `
+      ${sec('password', 'Contraseña', 'Cambiar la contraseña y el email para recuperarla', `
         <form class="form" data-form="password" novalidate>
           <label>Contraseña actual <input name="current" type="password" autocomplete="current-password"></label>
           <label>Nueva contraseña <input name="new" type="password" autocomplete="new-password" minlength="8"><span class="help">Mínimo 8 caracteres</span></label>
           <button class="btn btn-dark" type="submit">Cambiar contraseña</button>
+        </form>
+        <form class="form" data-form="me_email" novalidate>
+          <label>Tu email para recuperar la contraseña <input name="email" type="email" autocomplete="email" value="${esc((S.me && S.me.email) || '')}" placeholder="tu@email.com"><span class="help">Si olvidas la contraseña, en la pantalla de entrada pulsa «¿Has olvidado la contraseña?» y te llegará aquí un enlace para cambiarla.${isAdmin() ? ' Si lo dejas vacío, llegará al email de avisos del restaurante.' : ' Si lo dejas vacío, tendrá que cambiártela el administrador.'}</span></label>
+          <button class="btn btn-line" type="submit">Guardar email</button>
         </form>`)}
       <section class="card">
         <h2>Sesión</h2>
@@ -1681,7 +1746,7 @@
 
   function editUser(u) {
     const isNew = !u;
-    u = u || { username: '', name: '', role: 'staff', perms: [], active: true };
+    u = u || { username: '', name: '', role: 'staff', perms: [], active: true, email: '' };
     const info = S.permInfo || { reservas: 'Gestionar reservas', carta: 'Cambiar la carta', ajustes: 'Cambiar los ajustes' };
     const self = S.me && u.id === S.me.id;
     openSheet(isNew ? 'Nuevo usuario' : 'Editar usuario', `
@@ -1690,6 +1755,7 @@
           <label>Usuario <input name="username" value="${esc(u.username)}" autocapitalize="off" autocomplete="off" required placeholder="camarero1"></label>
           <label>Nombre <input name="name" value="${esc(u.name)}" placeholder="Laura"></label>
         </div>
+        <label>Email <input name="email" type="email" value="${esc(u.email || '')}" autocomplete="off" placeholder="laura@correo.com"><span class="help">Opcional. Sirve para que pueda recuperar la contraseña él solo.</span></label>
         <label>${isNew ? 'Contraseña' : 'Nueva contraseña'} <input name="password" type="password" autocomplete="new-password" minlength="8" placeholder="${isNew ? 'Mínimo 8 caracteres' : 'Déjala vacía para no cambiarla'}"></label>
         <div class="field">Tipo de usuario
           <div class="chips">
@@ -1712,7 +1778,7 @@
       f.addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = $('button[type=submit]', f);
-        const data = { id: u.id || 0, username: f.username.value, name: f.name.value, password: f.password.value, role: f.role.value,
+        const data = { id: u.id || 0, username: f.username.value, name: f.name.value, email: f.email.value.trim(), password: f.password.value, role: f.role.value,
           perms: $$('[name=perms]:checked', f).map((x) => x.value), active: self ? true : f.active.checked };
         busy(btn, true);
         try {
@@ -1743,6 +1809,16 @@
         await api('password', { body: { current: f.current.value, new: f.new.value } });
         f.reset();
         toast('Contraseña cambiada');
+      } catch (err) { toast(err.message, 'err'); }
+      busy(btn, false);
+      return;
+    }
+    if (kind === 'me_email') {
+      busy(btn, true);
+      try {
+        S.me = await api('me_email', { body: { email: f.email.value.trim() } });
+        LS.set('me', JSON.stringify(S.me));
+        toast(S.me.email ? 'Email guardado' : 'Email quitado');
       } catch (err) { toast(err.message, 'err'); }
       busy(btn, false);
       return;
@@ -1884,7 +1960,7 @@
       return;
     }
     const f = t.closest('form[data-form]');
-    if (f && f.dataset.form !== 'password') {
+    if (f && f.dataset.form !== 'password' && f.dataset.form !== 'me_email') {
       if (!f.dataset.dirty) {
         f.dataset.dirty = '1';
         const b = $('button[type=submit]', f);
@@ -1916,7 +1992,19 @@
   }
 
   /* ---------- Arranque ---------- */
+  /** Enlace del email para cambiar la contraseña (panel/#reset=…). Devuelve true si lo atiende. */
+  function resetFromHash() {
+    const m = /^#reset=([a-f0-9]{64})$/.exec(location.hash);
+    if (!m || !S.base) return false;
+    // Se quita el token de la dirección para que no quede en el historial
+    history.replaceState(null, '', location.pathname + location.search);
+    renderReset(m[1]);
+    return true;
+  }
+  window.addEventListener('hashchange', resetFromHash);
+
   function boot() {
+    if (resetFromHash()) return;
     if (!S.base) return renderSetup();
     if (!S.token) return renderLogin();
     startApp();

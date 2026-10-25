@@ -1,23 +1,23 @@
 # Graph Report - backend  (2026-10-25)
 
 ## Corpus Check
-- 77 files · ~96,528 words
+- 80 files · ~100,444 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 33 file(s) not represented in the graph (top: .xml 10, (none) 8, .css 4)
 
 ## Summary
-- 670 nodes · 1779 edges · 59 communities (14 shown, 45 thin omitted)
-- Extraction: 71% EXTRACTED · 29% INFERRED · 0% AMBIGUOUS · INFERRED: 511 edges (avg confidence: 0.86)
+- 692 nodes · 1893 edges · 72 communities (24 shown, 48 thin omitted)
+- Extraction: 70% EXTRACTED · 30% INFERRED · 0% AMBIGUOUS · INFERRED: 577 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `67380ec2`
+- Built from commit: `466fbd5f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- q
-- settings
+- core.php
+- pagina.php
 - www/app.js
 - panel/app.js
 - lib/carta.php
@@ -38,55 +38,66 @@
 - whatsapp.php
 - API
 - CLAUDE.md
+- reservas.php
+- now
+- q
+- clientes.php
+- settings
+- t
+- lang
+- Cómo hacer un tema
+- ValidationError
+- fotos.php
+- schema.php
 
 ## God Nodes (most connected - your core abstractions)
-1. `q()` - 86 edges
-2. `settings()` - 65 edges
-3. `ValidationError` - 40 edges
-4. `t()` - 33 edges
-5. `api()` - 31 edges
-6. `api()` - 31 edges
-7. `render()` - 25 edges
-8. `lang()` - 25 edges
+1. `q()` - 97 edges
+2. `settings()` - 68 edges
+3. `ValidationError` - 48 edges
+4. `t()` - 37 edges
+5. `api()` - 33 edges
+6. `api()` - 33 edges
+7. `lang()` - 26 edges
+8. `render()` - 25 edges
 9. `render()` - 25 edges
-10. `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` - 23 edges
+10. `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` - 25 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Datos del restaurante: `$s`` --references--> `h()`  [INFERRED]
-  TEMA.md → web/lib/core.php
 - `Fotos ampliables` --references--> `photo_img()`  [INFERRED]
   TEMA.md → web/lib/fotos.php
-- `Públicas (las usa la web)` --references--> `erase_request()`  [INFERRED]
-  API.md → web/lib/borrado.php
-- `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` --references--> `web_photo_reset()`  [INFERRED]
-  API.md → web/lib/carta.php
-- `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` --references--> `menu_save()`  [INFERRED]
-  API.md → web/lib/carta.php
+- `Clientes (cookie de sesión, mismo dominio)` --references--> `t()`  [INFERRED]
+  API.md → web/lib/i18n.php
+- `Cuenta del cliente: atributos `data-*`` --references--> `t()`  [INFERRED]
+  TEMA.md → web/lib/i18n.php
+- `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` --references--> `user_save()`  [INFERRED]
+  API.md → web/lib/auth.php
+- `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` --references--> `user_delete()`  [INFERRED]
+  API.md → web/lib/auth.php
 
 ## Import Cycles
 - None detected.
 
-## Communities (59 total, 45 thin omitted)
+## Communities (72 total, 48 thin omitted)
 
-### Community 0 - "q"
-Cohesion: 0.05
-Nodes (111): Gestión (app; cabecera `X-Token`, que se obtiene con `login`), active_admins(), change_password(), login(), logout(), request_token(), require_admin(), require_auth() (+103 more)
+### Community 0 - "core.php"
+Cohesion: 0.12
+Nodes (25): {closure#2}(), save_category(), crypto_key(), crypto_ready(), dec(), enc(), send_activation(), base_url() (+17 more)
 
-### Community 1 - "settings"
-Cohesion: 0.06
-Nodes (65): Funciones disponibles, Idiomas, La carta: `$carta`, Menús y carta principal, public_info(), {closure#1}(), {closure#3}(), {closure#4}() (+57 more)
+### Community 1 - "pagina.php"
+Cohesion: 0.13
+Nodes (12): lang_url(), asset(), {closure#1}(), {closure#2}(), flag_svg(), html_lang(), selector_idioma(), settings_tr() (+4 more)
 
 ### Community 2 - "www/app.js"
-Cohesion: 0.11
-Nodes (65): api(), askNotifications(), autoSend(), boot(), busy(), catOpen(), catOpenSave(), closeSheet() (+57 more)
+Cohesion: 0.10
+Nodes (68): api(), askNotifications(), autoSend(), boot(), busy(), catOpen(), catOpenSave(), closeSheet() (+60 more)
 
 ### Community 3 - "panel/app.js"
-Cohesion: 0.11
-Nodes (65): api(), askNotifications(), autoSend(), boot(), busy(), catOpen(), catOpenSave(), closeSheet() (+57 more)
+Cohesion: 0.10
+Nodes (68): api(), askNotifications(), autoSend(), boot(), busy(), catOpen(), catOpenSave(), closeSheet() (+60 more)
 
 ### Community 4 - "lib/carta.php"
-Cohesion: 0.09
-Nodes (41): allergen_list(), {closure#2}(), {closure#3}(), delete_dish(), dish_out(), get_dish(), menu_data(), menu_delete() (+33 more)
+Cohesion: 0.11
+Nodes (33): Gestión (app; cabecera `X-Token`, que se obtiene con `login`), allergen_list(), carta_toggle(), {closure#3}(), delete_dish(), dish_out(), get_dish(), menu_data() (+25 more)
 
 ### Community 5 - "with"
 Cohesion: 0.06
@@ -113,34 +124,74 @@ Cohesion: 0.36
 Nodes (9): apply(), choose(), close(), L(), loadScript(), read(), save(), show() (+1 more)
 
 ### Community 15 - "Cómo hacer un tema"
-Cohesion: 0.06
-Nodes (30): 1. Subir la web a Hostinger, 2. App de gestión, 3. Enviar los emails desde Gmail, 4. WhatsApp automático (opcional, API de Meta), Backend para webs de restaurantes, Cómo funcionan las reservas, Desarrollo, Empezar la web de un cliente nuevo (+22 more)
+Cohesion: 0.10
+Nodes (17): 1. Subir la web a Hostinger, 2. App de gestión, 3. Enviar los emails desde Gmail, 4. WhatsApp automático (opcional, API de Meta), Backend para webs de restaurantes, Cómo funcionan las reservas, Desarrollo, Empezar la web de un cliente nuevo (+9 more)
 
 ### Community 55 - "whatsapp.php"
-Cohesion: 0.20
-Nodes (18): {closure#1}(), {closure#2}(), {closure#4}(), {closure#5}(), {closure#6}(), {closure#7}(), wa_creds_ready(), wa_deliver() (+10 more)
+Cohesion: 0.19
+Nodes (20): {closure#1}(), {closure#2}(), {closure#4}(), {closure#5}(), {closure#6}(), {closure#7}(), wa_api_ready(), wa_creds_ready() (+12 more)
 
 ### Community 56 - "API"
-Cohesion: 0.50
-Nodes (3): API, Clientes (cookie de sesión, mismo dominio), Públicas (las usa la web)
+Cohesion: 0.40
+Nodes (4): API, Clientes (cookie de sesión, mismo dominio), Públicas (las usa la web), carta_on()
+
+### Community 59 - "reservas.php"
+Cohesion: 0.16
+Nodes (26): customer_cancel(), customer_confirm(), is_date(), restaurant_mail(), today(), with_lang(), cancel_by_link(), confirm_by_customer() (+18 more)
+
+### Community 60 - "now"
+Cohesion: 0.15
+Nodes (23): active_admins(), change_password(), login(), logout(), request_token(), require_admin(), require_auth(), require_perm() (+15 more)
+
+### Community 61 - "q"
+Cohesion: 0.21
+Nodes (18): {closure#1}(), customer_delete_admin(), customers_list(), erase_by_token(), erase_confirm(), erase_dismiss(), erase_find(), erase_pending() (+10 more)
+
+### Community 62 - "clientes.php"
+Cohesion: 0.22
+Nodes (19): email_idx(), can_cancel(), {closure#1}(), current_customer(), customer_attempts_guard(), customer_delete(), customer_login(), customer_login_session() (+11 more)
+
+### Community 63 - "settings"
+Cohesion: 0.18
+Nodes (16): Funciones disponibles, Idiomas, La carta: `$carta`, public_info(), mail_via_google(), settings(), social_url(), legal_aviso_traduccion() (+8 more)
+
+### Community 64 - "t"
+Cohesion: 0.17
+Nodes (13): Archivos obligatorios, Datos del restaurante: `$s`, {closure#1}(), {closure#3}(), {closure#4}(), h(), ranges_text(), t() (+5 more)
+
+### Community 65 - "lang"
+Cohesion: 0.26
+Nodes (16): day_name(), detect_lang(), fmt_date_l(), i18n_dict(), lang(), langs_on(), month_name(), t_msg() (+8 more)
+
+### Community 66 - "Cómo hacer un tema"
+Cohesion: 0.13
+Nodes (15): Confirmar la reserva: el botón es obligatorio, Cuenta del cliente: atributos `data-*`, Cómo hacer un tema, Fotos ampliables, Huecos de foto: `TEMA_FOTOS`, Icono de la app, Instalar como app, JavaScript propio (+7 more)
+
+### Community 67 - "ValidationError"
+Cohesion: 0.33
+Nodes (13): ValidationError, customer_reset(), reset_create(), reset_find(), reset_guard(), reset_password_ok(), reset_use(), user_forgot() (+5 more)
+
+### Community 68 - "fotos.php"
+Cohesion: 0.35
+Nodes (10): {closure#1}(), is_unsplash(), photo(), photo_abs(), photo_alt(), photo_cache_file(), photo_credits(), photo_img() (+2 more)
 
 ## Knowledge Gaps
-- **45 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **48 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `settings()` connect `settings` to `q`, `traductor.php`, `lib/carta.php`, `whatsapp.php`?**
-  _High betweenness centrality (0.068) - this node is a cross-community bridge._
-- **Are the 75 inferred relationships involving `q()` (e.g. with `active_admins()` and `change_password()`) actually correct?**
-  _`q()` has 75 INFERRED edges - model-reasoned connections that need verification._
-- **Should `q` be split into smaller, more focused modules?**
-  _Cohesion score 0.05120375807398708 - nodes in this community are weakly interconnected._
-- **Why does `q()` connect `q` to `settings`, `lib/carta.php`, `traductor.php`, `whatsapp.php`?**
+- **Why does `q()` connect `q` to `core.php`, `lang`, `ValidationError`, `lib/carta.php`, `traductor.php`, `whatsapp.php`, `reservas.php`, `now`, `clientes.php`, `settings`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
+- **Are the 86 inferred relationships involving `q()` (e.g. with `active_admins()` and `change_password()`) actually correct?**
+  _`q()` has 86 INFERRED edges - model-reasoned connections that need verification._
+- **Should `core.php` be split into smaller, more focused modules?**
+  _Cohesion score 0.11942959001782531 - nodes in this community are weakly interconnected._
+- **Why does `settings()` connect `settings` to `core.php`, `lang`, `Cómo hacer un tema`, `t`, `lib/carta.php`, `fotos.php`, `pagina.php`, `ValidationError`, `traductor.php`, `whatsapp.php`, `API`, `reservas.php`, `now`, `q`, `clientes.php`?**
   _High betweenness centrality (0.061) - this node is a cross-community bridge._
-- **Are the 57 inferred relationships involving `settings()` (e.g. with `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` and `public_info()`) actually correct?**
-  _`settings()` has 57 INFERRED edges - model-reasoned connections that need verification._
-- **Should `settings` be split into smaller, more focused modules?**
-  _Cohesion score 0.06361570918532944 - nodes in this community are weakly interconnected._
-- **Why does `Cómo hacer un tema` connect `Cómo hacer un tema` to `settings`?**
-  _High betweenness centrality (0.041) - this node is a cross-community bridge._
+- **Are the 60 inferred relationships involving `settings()` (e.g. with `Gestión (app; cabecera `X-Token`, que se obtiene con `login`)` and `public_info()`) actually correct?**
+  _`settings()` has 60 INFERRED edges - model-reasoned connections that need verification._
+- **Should `pagina.php` be split into smaller, more focused modules?**
+  _Cohesion score 0.13450292397660818 - nodes in this community are weakly interconnected._
+- **Why does `Cómo hacer un tema` connect `Cómo hacer un tema` to `t`, `settings`, `Cómo hacer un tema`?**
+  _High betweenness centrality (0.039) - this node is a cross-community bridge._

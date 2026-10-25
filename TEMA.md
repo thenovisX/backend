@@ -11,6 +11,7 @@ El tema es el diseño de la web. Vive entero en `web/tema/` y es lo único que c
 | `cuenta.php` | Entrar, registrarse y «Mi cuenta» (`cuenta.php`) | `$reservas`, `$activada`, `$enlace_caducado`, `$registro` |
 | `legal.php` | Información legal (`legal.php`) | `$secciones` |
 | `borrar.php` | Borrar mis datos (`borrar-datos.php`): pedir el enlace y confirmar el borrado. Pinta `borrar_form()` en «pedir» e «invalido» | `$estado`, `$contacto`, `$resumen`, `$hecho`, `$borrar_boton` |
+| `recuperar.php` | Recuperar la contraseña (`recuperar.php`): pedir el enlace (`<form data-api="c_forgot">` + `[data-forgot-ok]`) y elegir la nueva (`<form data-api="c_reset">` con `<input type="hidden" name="t">`). Si el tema no lo tiene, sale una página sencilla. | `$estado` (`pedir`, `nueva`, `invalido`), `$token` |
 | `confirmar.php` | Página del enlace del WhatsApp (`confirmar.php`) | `$ok`, `$pendiente`, `$estado`, `$reserva`, `$fecha`, `$error`, `$ics_url`, `$confirmar_form`, `$cancelar_form` |
 
 Todas reciben también `$s` (los ajustes del restaurante) y `$cliente` (el cliente con sesión, o `null`).
@@ -210,6 +211,8 @@ El SDK da el comportamiento; el tema solo pone el HTML.
 | `<form data-api="c_register">` | Crear cuenta. Campos `name`, `email`, `phone`, `password`, `privacy` (casilla) y `website` (campo trampa oculto). |
 | `<form data-api="c_profile">` | Guardar datos. `name`, `phone`, `email`, `password`, `new_password`. |
 | `<form data-api="c_delete" data-confirm="¿Seguro?">` | Borrar la cuenta. Campo `password`. |
+| `<form data-api="c_forgot">` | Pedir el enlace para cambiar la contraseña. Campo `email`. Al terminar oculta el formulario y muestra `[data-forgot-ok]`. Enlázalo desde «Entrar» con `<a href="recuperar.php">`. |
+| `<form data-api="c_reset">` | Guardar la contraseña nueva. Campos `t` (oculto) y `password`. Al terminar va a `cuenta.php`. |
 | `<p data-error>` dentro del form | Ahí se escribe el error. |
 | `<div data-tabs>` + botones `role="tab" aria-controls="id"` | Pestañas (Entrar / Crear cuenta). |
 | `<div data-registro-ok hidden>` | Se muestra al registrarse («Revisa tu email»). Dentro: `<b data-registro-email>`, `<button data-resend>`. |
