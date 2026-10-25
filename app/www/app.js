@@ -71,6 +71,8 @@
     menu: null,
     res: {},          // reservas cargadas, por id
     openSets: new Set(),
+    setTab: 'local',  // pestaña abierta en Ajustes
+    advOpen: false,   // ¿«Avanzado» desplegado?
     calMonth: todayISO().slice(0, 7),
     calDay: todayISO(),
     me: (() => { try { return JSON.parse(LS.get('me') || 'null'); } catch (e) { return null; } })(),
@@ -1192,12 +1194,14 @@
   }
 
   /* ---------- AJUSTES ---------- */
+  const SAVED_SECRET = 'Guardada (escribe otra para cambiarla)';
   async function viewAjustes() {
     const s = await loadSettings(true);
     const field = (k, label, type = 'text', extra = '') =>
       `<label>${label}<input name="${k}" type="${type}" value="${esc(s[k])}" ${extra}></label>`;
-    const num = (k, label, help, min = 0) =>
-      `<label>${label}<input name="${k}" type="number" inputmode="numeric" min="${min}" value="${esc(s[k])}">${help ? `<span class="help">${help}</span>` : ''}</label>`;
+    // unit: lo que se pinta a la derecha de la casilla (min, días, personas…)
+    const num = (k, label, help, min = 0, unit = '') =>
+      `<label>${label}<span class="unit"><input name="${k}" type="number" inputmode="numeric" min="${min}" value="${esc(s[k])}">${unit ? `<i>${unit}</i>` : ''}</span>${help ? `<span class="help">${help}</span>` : ''}</label>`;
     // Editor de horario por días. pre = '' (apertura) o 'k' (cocina)
     const hoursEditor = (pre, src, openLabel) => Object.keys(WEEK).map((d) => {
       const r = (src || {})[d] || [];
@@ -1221,27 +1225,28 @@
           ${p.custom ? `<button type="button" class="link-btn" data-wph-reset="${p.key}">Quitar</button>` : ''}
         </div></div>`).join('');
 
-    return `
-      <label class="search">${ICON.search}<input type="search" id="set-q" placeholder="Buscar en ajustes (horario, Gmail, fotos…)" autocomplete="off" enterkeyhint="search"></label>
-      <p class="set-none" hidden>No hay ningún ajuste con esa palabra.</p>
-      ${can('ajustes') ? `
-      <p class="set-intro">Todo lo que cambies aquí se ve en la web al momento.</p>
-      ${sec('datos', 'Datos del restaurante', 'Nombre, frase corta y presentación', `
+    const admin = can('ajustes');
+    // Cada pestaña agrupa secciones plegables. Los ajustes técnicos que casi nunca se tocan van dentro de «Avanzado».
+    const local = !admin ? '' : `
+      ${sec('datos', 'Nombre y presentación', 'Cómo se llama tu local y cómo lo presentas', `
         <form class="form" data-form="datos" novalidate>
-          ${field('name', 'Nombre', 'text', 'required maxlength="60"')}
+          ${field('name', 'Nombre del local', 'text', 'required maxlength="60"')}
           ${field('tagline', 'Frase corta', 'text', 'placeholder="Cocina de fuego, cócteles y noches largas"')}
-          <label>Presentación <textarea name="description" rows="4" maxlength="1000">${esc(s.description)}</textarea><span class="help">Sale en grande en la sección «Nosotros».</span></label>
+          <p class="help">Sale debajo del nombre, en la portada de la web.</p>
+          <label>Presentación <textarea name="description" rows="4" maxlength="1000">${esc(s.description)}</textarea><span class="help">Sale en grande en la sección «Nosotros». Cuenta qué cocináis y qué hace especial al local.</span></label>
           <button class="btn btn-main" type="submit">Guardar</button>
         </form>`)}
-      ${sec('contacto', 'Contacto y ubicación', 'Dirección, teléfono, WhatsApp y emails', `
+      ${sec('contacto', 'Contacto y dirección', 'Dónde estáis y cómo os pueden llamar o escribir', `
         <form class="form" data-form="contacto" novalidate>
-          ${field('address', 'Dirección', 'text', 'placeholder="Rúa do Príncipe, 10"')}
+          ${field('address', 'Calle y número', 'text', 'placeholder="Rúa do Príncipe, 10"')}
           ${field('city', 'Código postal y ciudad', 'text', 'placeholder="36202 Vigo"')}
           ${field('maps_url', 'Enlace de Google Maps', 'url', 'placeholder="https://maps.app.goo.gl/…"')}
           <p class="help">Opcional. Si lo dejas vacío, el botón «Cómo llegar» busca la dirección.</p>
           <div class="row">${field('phone', 'Teléfono', 'tel')}${field('whatsapp', 'WhatsApp', 'tel')}</div>
           ${field('email', 'Email de contacto', 'email')}
-          ${field('notify_email', 'Email para avisos de reservas', 'email')}
+          <p class="help">Es el que ven los clientes en la web.</p>
+          ${field('notify_email', 'Email donde te avisamos de las reservas', 'email')}
+          <p class="help">Puede ser el mismo. Aquí llega un email con cada reserva nueva.</p>
           <button class="btn btn-main" type="submit">Guardar</button>
         </form>`)}
       ${sec('redes', 'Redes sociales', 'Instagram, Facebook, TikTok y TripAdvisor', `
@@ -1264,58 +1269,6 @@
           <p class="help">Estos textos solo se ven si el diseño de la web los usa.</p>
           <button class="btn btn-main" type="submit">Guardar</button>
         </form>`)}
-      ${sec('seo', 'SEO y estadísticas', 'Google, Analytics y píxeles', `
-        <form class="form" data-form="seo" novalidate>
-          <label>Descripción para Google <textarea name="seo_description" rows="3" maxlength="300" placeholder="Restaurante de cocina de fuego y coctelería en Vigo. Reserva mesa online.">${esc(s.seo_description)}</textarea><span class="help">Es el texto que sale en Google debajo del nombre. Unas 150 letras, con el tipo de cocina y la ciudad.</span></label>
-          ${field('gsc_verify', 'Código de Google Search Console', 'text', 'placeholder="Pega aquí el código o la etiqueta meta" autocapitalize="off"')}
-          ${field('ga_id', 'Google Analytics 4 (ID de medición)', 'text', 'placeholder="G-AB12CD34EF" autocapitalize="characters"')}
-          ${field('gtm_id', 'Google Tag Manager (opcional)', 'text', 'placeholder="GTM-AB12CD3" autocapitalize="characters"')}
-          ${field('pixel_id', 'Píxel de Meta: Facebook e Instagram (opcional)', 'text', 'placeholder="123456789012345" inputmode="numeric"')}
-          <p class="help">Analytics y los píxeles solo se activan para los visitantes que acepten las cookies. El mapa del sitio para Google está en ${esc(S.base.replace(/^https?:\/\//, ''))}/sitemap.xml</p>
-          <button class="btn btn-main" type="submit">Guardar</button>
-        </form>`)}
-      ${sec('horario', 'Horario', 'Días y horas de apertura', `
-        <form class="form" data-form="horario" novalidate>
-          <p class="help">Es el horario de la web y en el que se puede reservar. Para cerrar un día suelto (festivo, vacaciones), hazlo desde el Calendario.</p>
-          ${hoursRows}
-          <button class="btn btn-main" type="submit">Guardar horario</button>
-        </form>`)}
-      ${sec('cocina', 'Horario de cocina', s.kitchen_on ? 'Activado: las reservas siguen este horario' : 'Si la cocina abre menos horas que el local', `
-        <form class="form" data-form="cocina" novalidate>
-          <p class="help">Por ejemplo, si el local abre hasta la 1:00 pero la cocina cierra a las 23:00. Con el horario de cocina activado, las reservas solo se ofrecen mientras la cocina está abierta, y en la web sale debajo del horario normal.</p>
-          <label class="switch-row">Usar horario de cocina <span class="sw"><input type="checkbox" name="kitchen_on" ${s.kitchen_on ? 'checked' : ''}><span></span></span></label>
-          ${hoursEditor('k', s.kitchen_hours, 'Cocina abierta')}
-          <p class="help">«Última reserva antes del cierre» (en Reservas online) se cuenta desde el cierre de la cocina.</p>
-          <button class="btn btn-main" type="submit">Guardar horario de cocina</button>
-        </form>`)}
-      ${sec('reservas', 'Reservas online', 'Aforo, horas y confirmación', `
-        <form class="form" data-form="reservas" novalidate>
-          <p class="help">Cada reserva llega a Peticiones y la confirmas enviando un WhatsApp al cliente.</p>
-          <div class="row">
-            ${num('capacity', 'Comensales a la vez', 'Máximo de personas sentadas al mismo tiempo', 1)}
-            ${num('table_minutes', 'Tiempo de mesa (min)', 'Lo que dura una comida. Con 90, quien reserva a las 14:00 ocupa sitio hasta las 15:30', 0)}
-          </div>
-          <div class="row">
-            ${num('slot_minutes', 'Cada cuántos minutos', 'Ej.: 30 → 13:00, 13:30…', 5)}
-          </div>
-          <div class="row">
-            ${num('max_people', 'Máx. personas por reserva', 'Grupos más grandes, por teléfono', 1)}
-            ${num('days_ahead', 'Días de antelación máx.', '', 1)}
-          </div>
-          <div class="row">
-            ${num('min_notice', 'Antelación mínima (min)', 'Ej.: 60 = no se reserva con menos de 1 h')}
-            ${num('last_before', 'Última reserva antes del cierre (min)', '')}
-          </div>
-          <button class="btn btn-main" type="submit">Guardar</button>
-        </form>`)}
-      ${sec('politicas', 'Políticas de reserva', 'Cancelación, retrasos y normas', `
-        <form class="form" data-form="politicas" novalidate>
-          <p class="help">Salen en la web y el cliente tiene que aceptarlas al reservar.</p>
-          <p class="help">Cancelar es siempre gratis para el cliente.</p>
-          ${num('late_minutes', 'Mesa guardada si llegan tarde (min)', '')}
-          <label>Otras normas <textarea name="policies" rows="5">${esc(s.policies)}</textarea><span class="help">Una por línea: «Título: texto». Ej.: «Mascotas: perros pequeños en la terraza».</span></label>
-          <button class="btn btn-main" type="submit">Guardar</button>
-        </form>`)}
       ${sec('legal', 'Datos legales', 'Titular y NIF para el aviso legal', `
         <form class="form" data-form="legal" novalidate>
           ${field('owner_name', 'Titular (nombre o empresa)')}
@@ -1323,24 +1276,52 @@
           ${field('owner_registry', 'Datos del Registro Mercantil (solo sociedades)', 'text', 'placeholder="Inscrita en el R. M. de Pontevedra, tomo…, folio…, hoja…"')}
           <p class="help">Salen en el aviso legal y al pie de los emails. Para que el aviso legal esté completo hace falta también el email de contacto.</p>
           <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`)}`;
+
+    const horarios = !admin ? '' : `
+      ${sec('horario', 'Horario de apertura', 'Qué días abres y a qué horas', `
+        <form class="form" data-form="horario" novalidate>
+          <p class="help">Es el horario que sale en la web y en el que se puede reservar. Para cerrar un día suelto (festivo, vacaciones), hazlo desde el Calendario.</p>
+          ${hoursRows}
+          <button class="btn btn-main" type="submit">Guardar horario</button>
         </form>`)}
-      ${sec('idiomas', 'Idiomas de la web', 'Español, inglés, portugués y gallego; la carta se traduce sola', `
-        <form class="form" data-form="idiomas" novalidate>
-          <p class="help">La web sale con banderas para cambiar de idioma. Los textos de la web ya están traducidos; la carta, la frase corta, la presentación y las políticas se traducen solas cada vez que las cambias. El nombre, la dirección, el teléfono y los emails no se traducen.</p>
-          ${[['en', 'Inglés'], ['pt', 'Portugués'], ['gl', 'Gallego']].map(([k, n]) => `<label class="switch-row">${n} <span class="sw"><input type="checkbox" name="langs" value="${k}" ${(s.langs || []).includes(k) ? 'checked' : ''}><span></span></span></label>`).join('')}
-          <div id="tr-status" class="tr-status"><p class="help">Comprobando traducciones…</p></div>
-          <div class="actions-row"><button class="btn btn-line btn-sm" type="button" data-tr-run>Traducir ahora</button><button class="btn btn-quiet btn-sm" type="button" data-tr-list>Revisar traducciones</button></div>
-          <details class="adv"><summary>Traductor automático</summary>
-            <label>Traductor <select name="tr_provider">
-              <option value="mymemory" ${s.tr_provider !== 'google' ? 'selected' : ''}>MyMemory (gratis, sin cuenta)</option>
-              <option value="google" ${s.tr_provider === 'google' ? 'selected' : ''}>Google Translate (con clave)</option>
-            </select></label>
-            <p class="help">MyMemory es gratis y traduce unos 50.000 caracteres al día, de sobra para una carta. Google traduce mejor y regala 500.000 caracteres al mes: crea una clave de «Cloud Translation API» en console.cloud.google.com.</p>
-            <label>Clave de Google <input name="tr_google_key" type="password" autocomplete="off" placeholder="${s.tr_google_key_set ? 'Guardada (escribe otra para cambiarla)' : 'AIza…'}"></label>
-          </details>
+      ${sec('cocina', 'Horario de cocina', s.kitchen_on ? 'Activado: las reservas siguen este horario' : 'Solo si la cocina cierra antes que el local', `
+        <form class="form" data-form="cocina" novalidate>
+          <p class="help">Por ejemplo, si el local abre hasta la 1:00 pero la cocina cierra a las 23:00. Con el horario de cocina activado, las reservas solo se ofrecen mientras la cocina está abierta, y en la web sale debajo del horario normal.</p>
+          <label class="switch-row">Usar horario de cocina <span class="sw"><input type="checkbox" name="kitchen_on" ${s.kitchen_on ? 'checked' : ''}><span></span></span></label>
+          ${hoursEditor('k', s.kitchen_hours, 'Cocina abierta')}
+          <p class="help">«Última reserva antes del cierre» (en Reservas) se cuenta desde el cierre de la cocina.</p>
+          <button class="btn btn-main" type="submit">Guardar horario de cocina</button>
+        </form>`)}`;
+
+    const reservas = !admin ? '' : `
+      ${sec('reservas', 'Mesas y turnos', 'Cuánta gente cabe, cuánto dura cada mesa y cada cuánto se reserva', `
+        <form class="form" data-form="reservas" novalidate>
+          <p class="help">Cada reserva llega a Peticiones y la confirmas enviando un WhatsApp al cliente.</p>
+          ${num('capacity', 'Aforo para reservas', 'Cuántas personas pueden estar sentadas a la vez como máximo.', 1, 'personas')}
+          ${num('table_minutes', 'Tiempo de ocupación por mesa', 'Lo que suele durar una comida. Con 90, quien reserva a las 14:00 tiene la mesa hasta las 15:30.', 0, 'min')}
+          ${num('slot_minutes', 'Intervalo entre reservas', 'Cada cuánto se ofrece una hora para reservar. Con 30: 13:00, 13:30, 14:00…', 5, 'min')}
+          ${num('max_people', 'Grupo más grande por internet', 'Los grupos más grandes tendrán que llamarte.', 1, 'personas')}
           <button class="btn btn-main" type="submit">Guardar</button>
         </form>`)}
-      ${sec('correo', 'Envío de emails', s.smtp_on ? `Activado con ${esc(s.smtp_user)}` : 'Conectar tu Gmail para enviar los emails', `
+      ${sec('reservas-cuando', 'Cuándo se puede reservar', 'Con cuánta antelación y hasta qué hora', `
+        <form class="form" data-form="reservas-cuando" novalidate>
+          ${num('days_ahead', 'Reservar como mucho con', 'Hasta cuántos días en el futuro se puede reservar.', 1, 'días')}
+          ${num('min_notice', 'Aviso mínimo', 'Con 60, nadie puede reservar para dentro de menos de 1 hora.', 0, 'min')}
+          ${num('last_before', 'Última reserva antes del cierre', 'Con 60 y cierre a las 23:30, la última hora que se ofrece es las 22:30.', 0, 'min')}
+          <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`)}
+      ${sec('politicas', 'Normas para el cliente', 'Retrasos, cancelaciones y otras normas', `
+        <form class="form" data-form="politicas" novalidate>
+          <p class="help">Salen en la web y el cliente tiene que aceptarlas al reservar. Cancelar es siempre gratis para el cliente.</p>
+          ${num('late_minutes', 'Cortesía si llegan tarde', 'Cuánto tiempo guardas la mesa si el cliente se retrasa.', 0, 'min')}
+          <label>Otras normas <textarea name="policies" rows="5">${esc(s.policies)}</textarea><span class="help">Una por línea: «Título: texto». Ej.: «Mascotas: perros pequeños en la terraza».</span></label>
+          <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`)}`;
+
+    // Secciones de «Avanzado». Para añadir un ajuste técnico nuevo, añade aquí otra sec(…).
+    const avanzado = !admin ? '' : [
+      sec('correo', 'Envío de emails (SMTP)', s.smtp_on ? `Activado con ${esc(s.smtp_user)}` : 'Enviar los emails desde tu Gmail', `
         <form class="form" data-form="correo" novalidate>
           <p class="help">Los emails a los clientes (activar la cuenta, confirmación de la reserva…) salen por defecto del correo del hosting y a veces acaban en spam. Con tu Gmail llegan mejor.</p>
           <ol class="steps">
@@ -1349,7 +1330,7 @@
             <li>Copia la contraseña de 16 letras que te da Google y pégala aquí abajo.</li>
           </ol>
           ${field('smtp_user', 'Tu dirección de Gmail', 'email', 'placeholder="turestaurante@gmail.com" autocapitalize="off" autocomplete="off"')}
-          <label>Contraseña de aplicación <input name="smtp_pass" type="password" autocomplete="new-password" placeholder="${s.smtp_pass_set ? 'Guardada (escribe otra para cambiarla)' : 'abcd efgh ijkl mnop'}"><span class="help">No es la contraseña de tu cuenta de Google. Se guarda cifrada.</span></label>
+          <label>Contraseña de aplicación <input name="smtp_pass" type="password" autocomplete="new-password" placeholder="${s.smtp_pass_set ? SAVED_SECRET : 'abcd efgh ijkl mnop'}"><span class="help">No es la contraseña de tu cuenta de Google. Se guarda cifrada.</span></label>
           <label class="switch-row">Enviar los emails con esta cuenta <span class="sw"><input type="checkbox" name="smtp_on" ${s.smtp_on ? 'checked' : ''}><span></span></span></label>
           <details class="adv"><summary>Otro proveedor de correo</summary>
             <div class="row">
@@ -1362,8 +1343,28 @@
           <button class="btn btn-main" type="submit">Guardar</button>
           <button class="btn btn-line" type="button" data-mail-test>Enviar un email de prueba</button>
           <p class="help">La prueba llega a «${esc(s.notify_email || s.email || 'el email de avisos')}». Gmail permite unos 500 emails al día, de sobra para un restaurante.</p>
-        </form>`)}
-      ${sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on ? [s.wa_on && 'sale solo al aceptar', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
+        </form>`),
+      sec('traductor', 'Traductor automático', s.tr_provider === 'google' ? 'Google Translate, con clave' : 'MyMemory, gratis y sin cuenta', `
+        <form class="form" data-form="traductor" novalidate>
+          <label>Traductor <select name="tr_provider">
+            <option value="mymemory" ${s.tr_provider !== 'google' ? 'selected' : ''}>MyMemory (gratis, sin cuenta)</option>
+            <option value="google" ${s.tr_provider === 'google' ? 'selected' : ''}>Google Translate (con clave)</option>
+          </select></label>
+          <p class="help">MyMemory es gratis y traduce unos 50.000 caracteres al día, de sobra para una carta. Google traduce mejor y regala 500.000 caracteres al mes: crea una clave de «Cloud Translation API» en console.cloud.google.com.</p>
+          <label>Clave de Google <input name="tr_google_key" type="password" autocomplete="off" placeholder="${s.tr_google_key_set ? SAVED_SECRET : 'AIza…'}"><span class="help">Solo hace falta con Google Translate. Se guarda cifrada.</span></label>
+          <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`),
+      sec('seo', 'Google y estadísticas', 'Descripción en Google, Search Console, Analytics y Píxel de Meta', `
+        <form class="form" data-form="seo" novalidate>
+          <label>Descripción para Google <textarea name="seo_description" rows="3" maxlength="300" placeholder="Restaurante de cocina de fuego y coctelería en Vigo. Reserva mesa online.">${esc(s.seo_description)}</textarea><span class="help">Es el texto que sale en Google debajo del nombre. Unas 150 letras, con el tipo de cocina y la ciudad.</span></label>
+          ${field('gsc_verify', 'Código de Google Search Console', 'text', 'placeholder="Pega aquí el código o la etiqueta meta" autocapitalize="off"')}
+          ${field('ga_id', 'Google Analytics 4 (ID de medición)', 'text', 'placeholder="G-AB12CD34EF" autocapitalize="characters"')}
+          ${field('gtm_id', 'Google Tag Manager (opcional)', 'text', 'placeholder="GTM-AB12CD3" autocapitalize="characters"')}
+          ${field('pixel_id', 'Píxel de Meta: Facebook e Instagram (opcional)', 'text', 'placeholder="123456789012345" inputmode="numeric"')}
+          <p class="help">Analytics y los píxeles solo se activan para los visitantes que acepten las cookies. El mapa del sitio para Google está en ${esc(S.base.replace(/^https?:\/\//, ''))}/sitemap.xml</p>
+          <button class="btn btn-main" type="submit">Guardar</button>
+        </form>`),
+      sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on ? [s.wa_on && 'sale solo al aceptar', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
         <form class="form" data-form="whatsapp" novalidate>
           <p class="help">Con la API oficial de WhatsApp Business (Meta), al aceptar una reserva el mensaje con el enlace para confirmar le llega al cliente solo. Si algo falla, puedes seguir mandándolo a mano.</p>
           <ol class="steps">
@@ -1372,7 +1373,7 @@
             <li>Copia el <b>identificador del número de teléfono</b> y un <b>token de acceso permanente</b> (de un usuario del sistema) y pégalos aquí.</li>
           </ol>
           ${field('wa_phone_id', 'Identificador del número de teléfono', 'text', 'placeholder="123456789012345" inputmode="numeric" autocomplete="off"')}
-          <label>Token de acceso de Meta <input name="wa_token" type="password" autocomplete="new-password" placeholder="${s.wa_token_set ? 'Guardado (escribe otro para cambiarlo)' : 'EAAG…'}"><span class="help">Se guarda cifrado y nunca vuelve a la app.</span></label>
+          <label>Token de acceso de Meta <input name="wa_token" type="password" autocomplete="new-password" placeholder="${s.wa_token_set ? SAVED_SECRET : 'EAAG…'}"><span class="help">Se guarda cifrado y nunca vuelve a la app.</span></label>
           <div class="row">
             ${field('wa_template', 'Nombre de la plantilla', 'text', 'placeholder="confirmar_reserva" autocapitalize="off" autocomplete="off"')}
             ${field('wa_template_lang', 'Idioma de la plantilla', 'text', 'placeholder="es" autocapitalize="off" autocomplete="off"')}
@@ -1392,8 +1393,25 @@
           <button class="btn btn-main" type="submit">Guardar</button>
           <button class="btn btn-line" type="button" data-wa-test>Enviar un WhatsApp de prueba</button>
           <p class="help">La prueba llega al WhatsApp del restaurante (${esc(s.whatsapp || s.phone || 'el de Contacto')}).</p>
+        </form>`),
+    ].join('');
+
+    const tecnica = !admin ? '' : `
+      ${sec('idiomas', 'Idiomas de la web', 'Español, inglés, portugués y gallego; la carta se traduce sola', `
+        <form class="form" data-form="idiomas" novalidate>
+          <p class="help">La web sale con banderas para cambiar de idioma. Los textos de la web ya están traducidos; la carta, la frase corta, la presentación y las políticas se traducen solas cada vez que las cambias. El nombre, la dirección, el teléfono y los emails no se traducen.</p>
+          ${[['en', 'Inglés'], ['pt', 'Portugués'], ['gl', 'Gallego']].map(([k, n]) => `<label class="switch-row">${n} <span class="sw"><input type="checkbox" name="langs" value="${k}" ${(s.langs || []).includes(k) ? 'checked' : ''}><span></span></span></label>`).join('')}
+          <div id="tr-status" class="tr-status"><p class="help">Comprobando traducciones…</p></div>
+          <div class="actions-row"><button class="btn btn-line btn-sm" type="button" data-tr-run>Traducir ahora</button><button class="btn btn-quiet btn-sm" type="button" data-tr-list>Revisar traducciones</button></div>
+          <button class="btn btn-main" type="submit">Guardar</button>
         </form>`)}
-      ` : '<p class="set-intro">Tu usuario no puede cambiar los ajustes de la web. Aquí tienes los avisos y tu contraseña.</p>'}
+      <details class="set-adv" data-adv ${S.advOpen ? 'open' : ''}>
+        <summary><span>Avanzado<small>Correo, traductor, Google, estadísticas y WhatsApp automático. Se configura una vez y no hace falta volver a tocarlo.</small></span></summary>
+        <div class="set-adv-body">${avanzado}</div>
+      </details>`;
+
+    const cuenta = `
+      ${!admin ? '<p class="set-intro">Tu usuario no puede cambiar los ajustes de la web. Aquí tienes los avisos y tu contraseña.</p>' : ''}
       ${isAdmin() ? sec('usuarios', 'Usuarios', 'Quién entra en la app y qué puede hacer', `
         <p class="help">Todos los usuarios pueden ver las reservas y la carta. Tú decides quién puede cambiar cada cosa.</p>
         <div id="users-box"><p class="help">Cargando…</p></div>
@@ -1409,7 +1427,6 @@
           <label>Nueva contraseña <input name="new" type="password" autocomplete="new-password" minlength="8"><span class="help">Mínimo 8 caracteres</span></label>
           <button class="btn btn-dark" type="submit">Cambiar contraseña</button>
         </form>`)}
-
       <section class="card">
         <h2>Sesión</h2>
         <p>Conectado a ${esc(S.base.replace(/^https?:\/\//, ''))} como ${esc(LS.get('user') || '')}${S.me ? (S.me.role === 'admin' ? ' (administrador)' : ' (empleado)') : ''}.</p>
@@ -1418,9 +1435,41 @@
           <button class="btn btn-danger btn-sm" type="button" data-logout>Cerrar sesión</button>
         </div>
       </section>`;
+
+    const panes = [
+      ['local', 'Local', 'Información del local', 'Lo que ven tus clientes en la web: nombre, contacto, fotos y datos legales.', local],
+      ['horarios', 'Horarios', 'Horarios', 'Cuándo abres y cuándo funciona la cocina.', horarios],
+      ['reservas', 'Reservas', 'Reglas de reservas', 'Cómo y cuándo pueden reservar tus clientes por internet.', reservas],
+      ['tecnica', 'Técnico', 'Configuración técnica', 'Idiomas de la web y, en «Avanzado», el correo, el traductor, Google y WhatsApp.', tecnica],
+      ['cuenta', 'Cuenta', 'Tu cuenta y tu equipo', 'Usuarios, avisos en el móvil, contraseña y sesión.', cuenta],
+    ].filter((p) => p[4].trim());
+    if (!panes.some((p) => p[0] === S.setTab)) S.setTab = panes[0][0];
+
+    return `
+      <label class="search">${ICON.search}<input type="search" id="set-q" placeholder="Buscar en ajustes (horario, Gmail, fotos…)" autocomplete="off" enterkeyhint="search"></label>
+      <p class="set-none" hidden>No hay ningún ajuste con esa palabra.</p>
+      <div class="set-tabs" role="tablist" aria-label="Categorías de ajustes">
+        ${panes.map(([id, short]) => `<button type="button" role="tab" id="set-tab-${id}" aria-controls="set-pane-${id}" aria-selected="${S.setTab === id}" data-set-tab="${id}">${short}</button>`).join('')}
+      </div>
+      ${panes.map(([id, , title, intro, html]) => `<div class="set-pane" role="tabpanel" id="set-pane-${id}" aria-labelledby="set-tab-${id}" data-pane="${id}" ${S.setTab === id ? '' : 'hidden'}>
+        <h2 class="set-pane-h">${title}</h2>
+        <p class="set-intro">${intro}${admin && id !== 'cuenta' ? ' Lo que cambies se ve en la web al momento.' : ''}</p>
+        ${html}
+      </div>`).join('')}`;
   }
 
   afterRender.ajustes = (view) => {
+    view.classList.remove('is-searching');
+    $$('[data-set-tab]', view).forEach((b) => b.addEventListener('click', () => {
+      const q = $('#set-q', view);
+      if (q && q.value) { q.value = ''; q.dispatchEvent(new Event('input', { bubbles: true })); }
+      S.setTab = b.dataset.setTab;
+      $$('[data-set-tab]', view).forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      $$('.set-pane', view).forEach((p) => { p.hidden = p.dataset.pane !== S.setTab; });
+      window.scrollTo({ top: 0 });
+    }));
+    const adv = $('[data-adv]', view);
+    if (adv) adv.addEventListener('toggle', () => { if (!view.classList.contains('is-searching')) S.advOpen = adv.open; });
     $$('details[data-set]', view).forEach((d) => d.addEventListener('toggle', () => {
       // Lo que abre el buscador no se recuerda: al borrar la búsqueda vuelve como estaba
       const sq = $('#set-q', view);
@@ -1715,7 +1764,7 @@
       body = kind === 'cocina' ? { kitchen_hours: hours, kitchen_on: $('[name=kitchen_on]', f).checked } : { hours };
       if (kind === 'cocina' && body.kitchen_on && !Object.values(hours).some((x) => x.length)) { toast('Marca al menos un día con la cocina abierta', 'err'); return; }
     } else if (kind === 'idiomas') {
-      body = { langs: ['es'].concat($$('[name=langs]:checked', f).map((x) => x.value)), tr_provider: f.tr_provider.value, tr_google_key: f.tr_google_key.value };
+      body = { langs: ['es'].concat($$('[name=langs]:checked', f).map((x) => x.value)) };
     } else {
       $$('input[name], textarea[name], select[name]', f).forEach((el) => { body[el.name] = el.type === 'checkbox' ? el.checked : el.value; });
     }
@@ -1726,10 +1775,10 @@
       delete f.dataset.dirty;
       btn.classList.remove('is-dirty');
       if (btn.dataset.orig) { btn.dataset.label = btn.dataset.orig; delete btn.dataset.orig; }
-      toast(kind === 'correo' || kind === 'whatsapp' ? 'Guardado' : 'Guardado. Ya se ve en la web.');
-      if (kind === 'whatsapp') { f.wa_token.value = ''; if (S.settings.wa_token_set) f.wa_token.placeholder = 'Guardado (escribe otro para cambiarlo)'; }
-      if (kind === 'correo') { const pw = $('[name=smtp_pass]', f); if (pw) { pw.value = ''; pw.placeholder = 'Guardada (escribe otra para cambiarla)'; } }
-      if (kind === 'idiomas') { f.tr_google_key.value = ''; if (S.settings.tr_google_key_set) f.tr_google_key.placeholder = 'Guardada (escribe otra para cambiarla)'; loadTrStatus(); }
+      toast($('[data-adv]', $('#view')) && $('[data-adv]', $('#view')).contains(f) ? 'Guardado' : 'Guardado. Ya se ve en la web.');
+      // Las claves y contraseñas no vuelven del servidor: se vacía la casilla y se avisa de que ya hay una guardada
+      $$('input[type=password][name]', f).forEach((pw) => { if (pw.value) { pw.value = ''; pw.placeholder = SAVED_SECRET; } });
+      if (kind === 'idiomas' || kind === 'traductor') loadTrStatus();
     } catch (err) { toast(err.message, 'err'); }
     busy(btn, false);
   }
@@ -1808,8 +1857,15 @@
         if (hit) n++;
         d.open = q ? hit : S.openSets.has(d.dataset.set);
       });
-      $$('.set-intro', $('#view')).forEach((p) => { p.hidden = !!q; });
-      $('.set-none', $('#view')).hidden = !q || n > 0;
+      // Al buscar se mira en todas las pestañas a la vez; al borrar, vuelve la pestaña que estaba abierta
+      const view = $('#view');
+      view.classList.toggle('is-searching', !!q);
+      $$('.set-pane', view).forEach((p) => { p.hidden = q ? !$$('details.set', p).some((d) => !d.hidden) : p.dataset.pane !== S.setTab; });
+      const adv = $('[data-adv]', view);
+      if (adv) { const any = $$('details.set', adv).some((d) => !d.hidden); adv.hidden = !!q && !any; adv.open = q ? any : S.advOpen; }
+      $$('.set-intro', view).forEach((p) => { p.hidden = !!q; });
+      $('.set-tabs', view).hidden = !!q;
+      $('.set-none', view).hidden = !q || n > 0;
       return;
     }
     if (t.id === 'carta-q') {
