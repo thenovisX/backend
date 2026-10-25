@@ -55,7 +55,8 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `month&month=AAAA-MM` | GET | resumen por día |
 | `changes&since=N` | GET | novedades desde el número N (avisos) |
 | `slots_admin&date=` | GET | plazas sin las reglas de antelación |
-| `reservation_status` | POST | `id`, `status` (`esperando`, `confirmada`, `rechazada`, `cancelada`) |
+| `reservation_status` | POST | `id`, `status` (`esperando`, `confirmada`, `rechazada`, `cancelada`). Con el WhatsApp automático activado, pasar a `esperando` manda el mensaje por la API de Meta y la respuesta lleva `wa_sent` y `wa_error` |
+| `reservation_whatsapp` | POST | `id` de una reserva en `esperando`: reenvía el WhatsApp por la API de Meta (`wa_sent`, `wa_error`) |
 | `reservation_save` | POST | `id`? y los datos de la reserva |
 | `reservation_delete` | POST | `id` (desaparece de la app; el enlace del cliente dirá «cancelada») |
 | `admin_menu` | GET | carta completa, también lo agotado, `menus` (todos), `carta_on` y `menus_button` |
@@ -73,6 +74,7 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `settings_save` | POST | cualquier ajuste |
 | `web_photo` / `web_photo_reset` | POST | `key` (hueco de `TEMA_FOTOS`), `photo` (archivo) |
 | `mail_test` | POST | `to`? → envía un email de prueba |
+| `whatsapp_test` | POST | `to`? (por defecto el WhatsApp del restaurante) → envía un WhatsApp de prueba por la API de Meta |
 | `tr_status` | GET | (ajustes) cuántos textos hay traducidos de cada idioma y el último error del traductor |
 | `tr_run` | POST | (ajustes) traduce ahora lo que falte |
 | `tr_list` | GET | (ajustes) todos los textos con sus traducciones, para revisarlas |

@@ -4,7 +4,7 @@ declare(strict_types=1);
 /*
  * Estados de una reserva:
  *  pendiente  → petición nueva desde la web; el restaurante aún no la ha revisado
- *  esperando  → el restaurante la aceptó y envió el WhatsApp; falta que el cliente toque el enlace
+ *  esperando  → el restaurante la aceptó y se envió el WhatsApp (solo, con la API de Meta, o a mano); falta que el cliente toque el enlace
  *  confirmada → el cliente tocó el enlace (o el restaurante la confirmó a mano)
  *  rechazada / cancelada
  */
@@ -200,16 +200,16 @@ function whatsapp_text(array $r, string $url): string
     });
 }
 
-/** Reserva con lo que necesita el panel: enlace de confirmación y enlace de WhatsApp listo para enviar. */
+/** Reserva con lo que necesita el panel: enlace de confirmación, enlace de WhatsApp listo para enviar y si se manda solo. */
 function res_admin(array $row): array
 {
     $r = res_out($row);
     if ($r['source'] === 'web' && in_array($r['status'], ['pendiente', 'esperando'], true) && $r['phone'] !== '') {
         $url = confirm_url($row);
-        $n = preg_replace('/\D/', '', $r['phone']);
-        if (strlen($n) === 9) $n = '34' . $n;
         $r['confirm_url'] = $url;
-        $r['wa_url'] = 'https://wa.me/' . $n . '?text=' . rawurlencode(whatsapp_text($r, $url));
+        // wa_url queda siempre como plan B para mandarlo a mano si el envío automático falla
+        $r['wa_url'] = 'https://wa.me/' . wa_number($r['phone']) . '?text=' . rawurlencode(whatsapp_text($r, $url));
+        $r['wa_auto'] = wa_api_ready();
     }
     return $r;
 }
@@ -335,8 +335,23 @@ function set_reservation_status(int $id, string $status): array
     $before = get_reservation($id);
     q('UPDATE reservations SET status = ?, cancel_by = ?, updated_at = ? WHERE id = ?', [$status, $status === 'cancelada' ? 'restaurante' : '', now(), $id]);
     $after = get_reservation($id);
+    // Al aceptar una reserva de la web, el WhatsApp con el enlace sale solo si la API de Meta está configurada
+    $wa = null;
+    if ($status === 'esperando' && $before['status'] !== 'esperando' && $after['source'] === 'web' && wa_api_ready()) {
+        $wa = wa_send_confirmation(q('SELECT * FROM reservations WHERE id = ?', [$id])->fetch());
+    }
     if ($before['status'] !== $status) notify_customer($after);
-    return get_reservation_admin($id);
+    return get_reservation_admin($id) + ($wa === null ? [] : ['wa_sent' => $wa === '', 'wa_error' => $wa]);
+}
+
+/** Reenvía por la API de Meta el WhatsApp de una reserva que espera al cliente. */
+function resend_reservation_whatsapp(int $id): array
+{
+    $row = q('SELECT * FROM reservations WHERE id = ? AND deleted = 0', [$id])->fetch();
+    if (!$row) throw new ValidationError('La reserva no existe');
+    if ($row['status'] !== 'esperando' || $row['source'] !== 'web') throw new ValidationError('Esta reserva no está esperando al cliente');
+    $wa = wa_send_confirmation($row);
+    return get_reservation_admin($id) + ['wa_sent' => $wa === '', 'wa_error' => $wa];
 }
 
 /** Crear o editar una reserva desde el panel (p. ej. una llamada). */
@@ -347,7 +362,8 @@ function save_reservation(array $in): array
     $id = (int)($in['id'] ?? 0);
     if ($id) {
         get_reservation($id);
-        q('UPDATE reservations SET name=?, phone=?, email=?, email_idx=?, rdate=?, rtime=?, people=?, notes=?, updated_at=? WHERE id=?', [
+        // Los recordatorios vuelven a empezar por si ha cambiado el día o la hora
+        q('UPDATE reservations SET name=?, phone=?, email=?, email_idx=?, rdate=?, rtime=?, people=?, notes=?, updated_at=?, reminders=0 WHERE id=?', [
             enc($d['name']), enc($d['phone']), enc($d['email']), email_idx($d['email']), $d['rdate'], $d['rtime'], $d['people'], enc($d['notes']), now(), $id,
         ]);
         return get_reservation_admin($id);
@@ -434,7 +450,5 @@ function reject_info(int $id): array
             'text_none'  => $sorry . ' ' . t('Ese día ya no nos queda sitio. Esperamos verte otro día; puedes reservar en la web:') . ' ' . base_url() . '/reservar.php' . $lq,
         ];
     });
-    $n = preg_replace('/\D/', '', $r['phone']);
-    if (strlen($n) === 9) $n = '34' . $n;
-    return ['slots' => $slots, 'wa_number' => $r['phone'] !== '' ? $n : ''] + $texts;
+    return ['slots' => $slots, 'wa_number' => $r['phone'] !== '' ? wa_number($r['phone']) : ''] + $texts;
 }
