@@ -40,6 +40,8 @@ return [
     'Marca la casilla para aceptar las políticas.',
     'Enviando…',
     'Petición realizada',
+    'Revisa tu WhatsApp',
+    'Si no validas el teléfono a tiempo, la reserva se anula sola y la mesa queda libre.',
     'Esperando confirmación. Mientras no abras el enlace del WhatsApp y pulses «Confirmar mi reserva», la reserva queda pendiente.',
     'Esperando confirmación. La verás en <a href="cuenta.php">tu cuenta</a>, donde también podrás cancelarla.',
     'Si creas una cuenta con el mismo email, también la verás allí.',

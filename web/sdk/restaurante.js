@@ -288,10 +288,12 @@
       btn.disabled = true;
       btn.textContent = T('Enviando…');
       api('reserve', data).then(function (r) {
-        $('#bk-done-t').textContent = T('Petición realizada');
+        $('#bk-done-t').textContent = r.verify ? T('Revisa tu WhatsApp') : T('Petición realizada');
         $('#bk-done-msg').textContent = r.message;
         var more = $('#bk-done-more');
-        var wait = T('Esperando confirmación. Mientras no abras el enlace del WhatsApp y pulses «Confirmar mi reserva», la reserva queda pendiente.');
+        var wait = r.verify
+          ? T('Si no validas el teléfono a tiempo, la reserva se anula sola y la mesa queda libre.')
+          : T('Esperando confirmación. Mientras no abras el enlace del WhatsApp y pulses «Confirmar mi reserva», la reserva queda pendiente.');
         if (r.linked) more.innerHTML = T('Esperando confirmación. La verás en <a href="cuenta.php">tu cuenta</a>, donde también podrás cancelarla.');
         else if (r.email) more.textContent = wait + ' ' + T('Si creas una cuenta con el mismo email, también la verás allí.');
         else more.textContent = wait + ' ' + T('Como no has puesto email, esta reserva no aparecerá en ninguna cuenta.');

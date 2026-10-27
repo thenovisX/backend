@@ -12,7 +12,7 @@ declare(strict_types=1);
 detect_lang();
 
 /** Versión del SDK: súbela si cambias algo de web/sdk/ para que los navegadores lo descarguen de nuevo. */
-const SDK_V = '5';
+const SDK_V = '6';
 
 /** Versión de los archivos del tema (la define el tema en tema.php; si no, 1). */
 function tema_v(): string
@@ -291,6 +291,7 @@ function body_end(array $opts = []): void
 {
     $s = settings();
     $c = current_customer();
+    if (empty($GLOBALS['credito_disenador_puesto'])) echo '<p class="r-credito-fin">' . credito_disenador() . '</p>';
     if ($opts['reserva'] ?? true) include __DIR__ . '/reserva-dialogo.php';
     $data = ['today' => today(), 'daysAhead' => (int)$s['days_ahead'], 'maxPeople' => (int)$s['max_people'], 'name' => $s['name'],
         'hours' => $s['hours'], 'closed' => $s['closed_dates'], 'phone' => $s['phone'], 'now' => date('Y-m-d H:i'), 'customer' => customer_out($c)];
@@ -298,6 +299,17 @@ function body_end(array $opts = []): void
 <script>window.RESTAURANT = <?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;</script>
 <script src="sdk/restaurante.js?v=<?= SDK_V ?>" defer></script>
     <?php
+}
+
+/**
+ * Crédito del diseñador de la web («Diseño web: The Novis»). El tema Base lo pone en su pie; si un tema no lo
+ * llama, body_end() lo añade al final de la página para que salga siempre.
+ */
+const DESIGNER = ['name' => 'The Novis', 'url' => 'https://thenovis.com'];
+function credito_disenador(string $class = ''): string
+{
+    $GLOBALS['credito_disenador_puesto'] = true;
+    return '<span class="r-credito' . ($class ? ' ' . h($class) : '') . '">' . t('Diseño web:') . ' <a href="' . DESIGNER['url'] . '" target="_blank" rel="noopener">' . DESIGNER['name'] . '</a></span>';
 }
 
 /** Enlace que abre el aviso de cookies para cambiar la elección (obligatorio tenerlo en el pie). */

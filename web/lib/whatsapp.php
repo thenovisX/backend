@@ -15,6 +15,13 @@ declare(strict_types=1);
  *
  * Los recordatorios (24 h y 12 h antes de una reserva confirmada) usan otra plantilla con 4 variables:
  *   {{1}} nombre del cliente · {{2}} día · {{3}} hora · {{4}} personas
+ *
+ * Validar el teléfono (opcional): al reservar en la web, el mensaje con el enlace sale en el momento, sin esperar
+ * al restaurante (misma plantilla de 5 variables). Cuando el cliente pulsa «Confirmar mi reserva», su teléfono queda
+ * validado y la reserva pasa sola a confirmada. Si no lo hace en WA_VERIFY_MINUTES, la reserva se anula y libera la mesa.
+ *
+ * «Reserva registrada» (opcional): cuando una reserva de la web queda confirmada, otro WhatsApp se lo dice al
+ * cliente. Usa su propia plantilla con las mismas 4 variables que el recordatorio.
  */
 
 /** Error de la API de Meta: el código es el de Meta (190, 131047…). */
@@ -52,6 +59,21 @@ function wa_remind_ready(): bool
     return settings()['wa_remind_on'] && wa_creds_ready();
 }
 
+/** Minutos que tiene el cliente para validar su teléfono antes de que la reserva se anule. */
+const WA_VERIFY_MINUTES = 30;
+
+/** ¿Tiene el cliente que validar su teléfono por WhatsApp al reservar en la web? */
+function wa_verify_ready(): bool
+{
+    return settings()['wa_verify_on'] && wa_creds_ready();
+}
+
+/** ¿Sale el WhatsApp «reserva registrada» cuando la reserva queda confirmada? */
+function wa_done_ready(): bool
+{
+    return settings()['wa_done_on'] && wa_creds_ready();
+}
+
 /**
  * Manda al cliente el WhatsApp con el enlace para confirmar la reserva.
  * Devuelve '' si Meta lo ha aceptado o el motivo del error (que también queda guardado para verlo en Ajustes).
@@ -59,7 +81,7 @@ function wa_remind_ready(): bool
 function wa_send_confirmation(array $row): string
 {
     $r = res_out($row);
-    if (!wa_api_ready()) return 'El envío automático de WhatsApp no está activado';
+    if (!wa_api_ready() && !wa_verify_ready()) return 'El envío automático de WhatsApp no está activado';
     $url = confirm_url($row);
     return wa_deliver($r, settings()['wa_template'],
         fn() => [wa_first_name($r), fmt_date_l($r['date']), $r['time'], wa_people($r), $url . (lang() !== 'es' ? '&lang=' . lang() : '')],
@@ -186,6 +208,16 @@ function wa_send_reminder(array $row): string
         fn() => t('Hola %s, te recordamos tu reserva en %s el %s a las %s (%s). ¡Te esperamos!', wa_first_name($r), settings()['name'], fmt_date_l($r['date']), $r['time'], wa_people($r)));
 }
 
+/** «Reserva registrada»: avisa al cliente de que su reserva ya está confirmada. */
+function wa_send_done(array $row): string
+{
+    $r = res_out($row);
+    if (!wa_done_ready()) return 'El aviso de reserva registrada no está activado';
+    return wa_deliver($r, settings()['wa_done_template'],
+        fn() => [wa_first_name($r), fmt_date_l($r['date']), $r['time'], wa_people($r)],
+        fn() => t('Hola %s, tu reserva en %s para el %s a las %s (%s) está registrada. ¡Te esperamos!', wa_first_name($r), settings()['name'], fmt_date_l($r['date']), $r['time'], wa_people($r)));
+}
+
 /** Clave para llamar a cron.php desde una tarea programada del hosting. */
 function cron_key(): string
 {
@@ -205,8 +237,8 @@ function wa_test(string $phone): string
         wa_post($s['wa_template'] === ''
             ? ['to' => $to, 'type' => 'text', 'text' => ['body' => "Prueba de WhatsApp automático de {$s['name']}. ¡Funciona!"]]
             : wa_template_message($to, $s['wa_template'], $s['wa_template_lang'] ?: 'es', with_lang('es', fn() => [wa_first_name($r), fmt_date_l($r['date']), $r['time'], wa_people($r), $url])));
-        if ($s['wa_remind_template'] !== '') {
-            wa_post(wa_template_message($to, $s['wa_remind_template'], $s['wa_template_lang'] ?: 'es', with_lang('es', fn() => [wa_first_name($r), fmt_date_l($r['date']), $r['time'], wa_people($r)])));
+        foreach (array_unique(array_filter([$s['wa_remind_template'], $s['wa_done_template']])) as $tpl) {
+            wa_post(wa_template_message($to, $tpl, $s['wa_template_lang'] ?: 'es', with_lang('es', fn() => [wa_first_name($r), fmt_date_l($r['date']), $r['time'], wa_people($r)])));
         }
     } catch (WaError $e) {
         throw new ValidationError($e->getMessage());

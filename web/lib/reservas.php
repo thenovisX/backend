@@ -4,12 +4,41 @@ declare(strict_types=1);
 /*
  * Estados de una reserva:
  *  pendiente  → petición nueva desde la web; el restaurante aún no la ha revisado
- *  esperando  → el restaurante la aceptó y se envió el WhatsApp (solo, con la API de Meta, o a mano); falta que el cliente toque el enlace
+ *  esperando  → el restaurante la aceptó y se envió el WhatsApp (solo, con la API de Meta, o a mano); falta que el cliente toque el enlace.
+ *                Con «validar el teléfono» activado, las reservas de la web nacen aquí: el WhatsApp sale al momento y
+ *                verify_until marca hasta cuándo guarda la mesa (luego se anula sola, ver expire_unverified())
  *  confirmada → el cliente tocó el enlace (o el restaurante la confirmó a mano)
  *  rechazada / cancelada
  */
 const RES_STATUSES = ['pendiente', 'esperando', 'confirmada', 'rechazada', 'cancelada'];
 const RES_ACTIVE = ['pendiente', 'esperando', 'confirmada']; // ocupan sitio
+
+/**
+ * Apunta una reserva sin que otra petición a la vez se lleve la misma mesa: lee el aforo y escribe dentro de un
+ * bloqueo. En SQLite, BEGIN IMMEDIATE deja escribir a uno solo; en MySQL, un candado con nombre (GET_LOCK).
+ */
+function booking_lock(callable $fn): mixed
+{
+    $pdo = db();
+    $sqlite = (cfg()['db_driver'] ?? 'mysql') === 'sqlite';
+    $lock = 'reservas_' . (cfg()['db_name'] ?? '');
+    if ($sqlite) {
+        $pdo->exec('BEGIN IMMEDIATE');
+    } else {
+        if ((int)q('SELECT GET_LOCK(?, 10)', [$lock])->fetchColumn() !== 1) throw new ValidationError(t('Hay mucha gente reservando ahora mismo. Inténtalo de nuevo en unos segundos.'));
+        $pdo->beginTransaction();
+    }
+    try {
+        $out = $fn();
+        $sqlite ? $pdo->exec('COMMIT') : $pdo->commit();
+        return $out;
+    } catch (Throwable $e) {
+        $sqlite ? $pdo->exec('ROLLBACK') : $pdo->rollBack();
+        throw $e;
+    } finally {
+        if (!$sqlite) q('SELECT RELEASE_LOCK(?)', [$lock]);
+    }
+}
 
 function fmt_date_es(string $date): string
 {
@@ -46,7 +75,9 @@ function day_slots(string $date, bool $ignoreRules = false, int $excludeId = 0):
 
     // Reservas del día que ocupan sitio: [inicio en segundos, personas]
     $ph = implode(',', array_fill(0, count(RES_ACTIVE), '?'));
-    $rows = q("SELECT rtime, SUM(people) AS p FROM reservations WHERE rdate = ? AND id <> ? AND status IN ($ph) GROUP BY rtime", array_merge([$date, $excludeId], RES_ACTIVE))->fetchAll();
+    // Las que esperan a que el cliente valide su teléfono dejan de contar al pasar su plazo
+    $rows = q("SELECT rtime, SUM(people) AS p FROM reservations WHERE rdate = ? AND id <> ? AND status IN ($ph) AND (verify_until IS NULL OR verify_until > ?) GROUP BY rtime",
+        array_merge([$date, $excludeId], RES_ACTIVE, [now()]))->fetchAll();
     $booked = array_map(fn($r) => [strtotime("$date {$r['rtime']}"), (int)$r['p']], $rows);
     // Tiempo de mesa: una reserva ocupa su sitio desde su hora hasta que pasa este tiempo (0 = solo su hora)
     $dur = max(0, (int)$s['table_minutes']) * 60;
@@ -117,55 +148,67 @@ function create_public_reservation(array $in): array
     $recent = (int)q('SELECT COUNT(*) FROM reservations WHERE ip = ? AND created_at > ?', [$ip, date('Y-m-d H:i:s', time() - 3600)])->fetchColumn();
     if ($recent >= 5) throw new ValidationError('Has hecho demasiadas reservas seguidas. Llámanos por teléfono.');
 
-    $pdo = db();
-    $pdo->beginTransaction();
-    $slots = day_slots($d['rdate']);
-    $slot = null;
-    foreach ($slots['slots'] as $x) if ($x['time'] === $d['rtime']) $slot = $x;
-    if (!$slot) {
-        $pdo->rollBack();
-        throw new ValidationError($slots['reason'] ?: t('Esa hora no está disponible'));
-    }
-    if ($slot['left'] < $d['people']) {
-        $pdo->rollBack();
-        throw new ValidationError($slot['left'] > 0 ? t('A esa hora solo quedan %d plazas', $slot['left']) : t('Esa hora ya está completa, prueba otra'));
-    }
-
-    $s = settings();
-    $status = 'pendiente';
+    // Con la validación del teléfono activada, el WhatsApp con el enlace sale ya y la mesa se guarda un rato
+    $verify = wa_verify_ready();
+    $status = $verify ? 'esperando' : 'pendiente';
+    $until = $verify ? date('Y-m-d H:i:s', time() + WA_VERIFY_MINUTES * 60) : null;
     $token = bin2hex(random_bytes(16));
     // Si no ha entrado pero el email es de una cuenta ya activada, la reserva aparece en esa cuenta
     $cid = $customer ? (int)$customer['id'] : 0;
     if (!$cid && $d['email'] !== '') {
         $cid = (int)(q('SELECT id FROM customers WHERE email_idx = ? AND verified_at IS NOT NULL', [email_idx($d['email'])])->fetchColumn() ?: 0);
     }
-    q('INSERT INTO reservations (name, phone, email, email_idx, rdate, rtime, people, notes, status, source, ip, created_at, updated_at, customer_id, verify_token, seq, lang)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
-        enc($d['name']), enc($d['phone']), enc($d['email']), email_idx($d['email']), $d['rdate'], $d['rtime'], $d['people'], enc($d['notes']),
-        $status, 'web', $ip, now(), now(), $cid, enc($token), next_seq(), lang(),
-    ]);
-    $id = (int)$pdo->lastInsertId();
-    $pdo->commit();
+    $id = booking_lock(function () use ($d, $status, $until, $token, $cid, $ip) {
+        $slots = day_slots($d['rdate']);
+        $slot = null;
+        foreach ($slots['slots'] as $x) if ($x['time'] === $d['rtime']) $slot = $x;
+        if (!$slot) throw new ValidationError($slots['reason'] ?: t('Esa hora no está disponible'));
+        if ($slot['left'] < $d['people']) {
+            throw new ValidationError($slot['left'] > 0 ? t('A esa hora solo quedan %d plazas', $slot['left']) : t('Esa hora ya está completa, prueba otra'));
+        }
+        q('INSERT INTO reservations (name, phone, email, email_idx, rdate, rtime, people, notes, status, source, ip, created_at, updated_at, customer_id, verify_token, seq, lang, verify_until)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
+            enc($d['name']), enc($d['phone']), enc($d['email']), email_idx($d['email']), $d['rdate'], $d['rtime'], $d['people'], enc($d['notes']),
+            $status, 'web', $ip, now(), now(), $cid, enc($token), next_seq(), lang(), $until,
+        ]);
+        return (int)db()->lastInsertId();
+    });
     audit('reserva', $cid, "Reserva #$id: acepta políticas de reserva y privacidad, versión " . LEGAL_VERSION);
 
     $when = fmt_date_es($d['rdate']) . ' a las ' . $d['rtime'];
-    restaurant_mail(
-        "Petición de reserva: {$d['name']}, {$d['people']} pers., $when",
-        "Nueva petición de reserva desde la web\n\nNombre: {$d['name']}\nDía: $when\nPersonas: {$d['people']}\n\n"
-        . "Confírmala desde la pestaña Peticiones de la app: allí están el teléfono y las notas, y se abrirá WhatsApp con el mensaje para el cliente.\n"
-        . "(Por privacidad, el teléfono y el email del cliente no van en este aviso.)"
-    );
+    if ($verify) {
+        $err = wa_send_confirmation(q('SELECT * FROM reservations WHERE id = ?', [$id])->fetch());
+        if ($err !== '') {
+            // Si Meta falla, la reserva sigue como siempre: el restaurante la revisa y manda el WhatsApp
+            q("UPDATE reservations SET status = 'pendiente', verify_until = NULL WHERE id = ?", [$id]);
+            $verify = false;
+            $status = 'pendiente';
+        }
+    }
+    if (!$verify) {
+        restaurant_mail(
+            "Petición de reserva: {$d['name']}, {$d['people']} pers., $when",
+            "Nueva petición de reserva desde la web\n\nNombre: {$d['name']}\nDía: $when\nPersonas: {$d['people']}\n\n"
+            . "Confírmala desde la pestaña Peticiones de la app: allí están el teléfono y las notas, y se abrirá WhatsApp con el mensaje para el cliente.\n"
+            . "(Por privacidad, el teléfono y el email del cliente no van en este aviso.)"
+        );
+    }
+    // Con validación, el aviso al restaurante sale cuando el cliente valida (confirm_by_customer)
 
+    $summary = t('Hemos recibido tu petición para el %s a las %s (%s).', fmt_date_l($d['rdate']), $d['rtime'], $d['people'] . ' ' . ($d['people'] === 1 ? t('persona') : t('personas')));
     return [
         'id' => $id,
         'status' => $status,
+        'verify' => $verify,          // true: falta que el cliente valide su teléfono con el enlace del WhatsApp
+        'verify_minutes' => $verify ? WA_VERIFY_MINUTES : 0,
         'people' => $d['people'],
         'account' => (bool)$customer,
         'linked' => $cid > 0,
         'email' => $d['email'] !== '',
         'when' => fmt_date_l($d['rdate']) . ' · ' . $d['rtime'],
-        'message' => t('Hemos recibido tu petición para el %s a las %s (%s).', fmt_date_l($d['rdate']), $d['rtime'], $d['people'] . ' ' . ($d['people'] === 1 ? t('persona') : t('personas')))
-            . ' ' . t('El restaurante la revisará y te enviará un WhatsApp al %s con un enlace para confirmarla.', $d['phone']),
+        'message' => $summary . ' ' . ($verify
+            ? t('Te hemos enviado un WhatsApp al %s. Abre el enlace y pulsa «Confirmar mi reserva» en los próximos %d minutos para validar tu teléfono y dejarla registrada.', $d['phone'], WA_VERIFY_MINUTES)
+            : t('El restaurante la revisará y te enviará un WhatsApp al %s con un enlace para confirmarla.', $d['phone'])),
     ];
 }
 
@@ -244,15 +287,43 @@ function confirm_by_customer(int $id, string $token): array
 {
     [$state, $r] = peek_by_customer($id, $token);
     if ($state !== 'pendiente') return [$state, $r];
-    $row = q('SELECT customer_id FROM reservations WHERE id = ?', [$id])->fetch();
-    q("UPDATE reservations SET status = 'confirmada', updated_at = ?, seq = ? WHERE id = ?", [now(), next_seq(), $id]);
-    audit('reserva_confirmada_cliente', (int)$row['customer_id'], "Reserva #$id confirmada desde el enlace");
+    $row = q('SELECT * FROM reservations WHERE id = ?', [$id])->fetch();
+    $verified = $row['verify_until'] !== null; // venía de validar el teléfono al reservar
+    $ok = booking_lock(function () use ($row, $id) {
+        // Si pasó el plazo para validar, su sitio dejó de estar guardado: se mira si aún cabe
+        if ($row['verify_until'] !== null && $row['verify_until'] <= now()) {
+            $left = -1;
+            foreach (day_slots($row['rdate'], false, $id)['slots'] as $x) if ($x['time'] === $row['rtime']) $left = $x['left'];
+            if ($left < (int)$row['people']) return false;
+        }
+        q("UPDATE reservations SET status = 'confirmada', verify_until = NULL, updated_at = ?, seq = ? WHERE id = ? AND status IN ('pendiente', 'esperando')", [now(), next_seq(), $id]);
+        return true;
+    });
+    if (!$ok) {
+        q("UPDATE reservations SET status = 'cancelada', cancel_by = 'sistema', verify_until = NULL, updated_at = ? WHERE id = ?", [now(), $id]);
+        return ['completa', get_reservation($id)];
+    }
+    audit('reserva_confirmada_cliente', (int)$row['customer_id'], "Reserva #$id confirmada desde el enlace" . ($verified ? ' (teléfono validado)' : ''));
     $r = get_reservation($id);
-    $s = settings();
-    restaurant_mail("Reserva confirmada por el cliente: {$r['name']}, " . fmt_date_es($r['date']) . " {$r['time']}",
-        "{$r['name']} ha confirmado su reserva desde el enlace del WhatsApp.\n\nDía: " . fmt_date_es($r['date']) . " a las {$r['time']}\nPersonas: {$r['people']}");
+    restaurant_mail(($verified ? 'Nueva reserva confirmada' : 'Reserva confirmada por el cliente') . ": {$r['name']}, {$r['people']} pers., " . fmt_date_es($r['date']) . " {$r['time']}",
+        ($verified
+            ? "Nueva reserva desde la web. {$r['name']} ha validado su teléfono con el enlace del WhatsApp y la reserva ha quedado confirmada.\n\n"
+            : "{$r['name']} ha confirmado su reserva desde el enlace del WhatsApp.\n\n")
+        . "Día: " . fmt_date_es($r['date']) . " a las {$r['time']}\nPersonas: {$r['people']}"
+        . ($verified ? "\n\nEl teléfono y las notas están en la app. (Por privacidad no van en este aviso.)" : ''));
     notify_customer($r);
+    if (wa_done_ready()) wa_send_done(q('SELECT * FROM reservations WHERE id = ?', [$id])->fetch());
     return ['confirmada', $r];
+}
+
+/**
+ * Anula las reservas cuyo cliente no validó el teléfono a tiempo (así la mesa vuelve a quedar libre en la app y
+ * en el calendario). La web ya no las cuenta para el aforo desde que pasa el plazo; esto solo las cierra.
+ */
+function expire_unverified(): int
+{
+    return q("UPDATE reservations SET status = 'cancelada', cancel_by = 'sistema', verify_until = NULL, updated_at = ?
+              WHERE status = 'esperando' AND verify_until IS NOT NULL AND verify_until <= ?", [now(), now()])->rowCount();
 }
 
 function get_reservation(int $id): array
@@ -269,7 +340,8 @@ function res_out(array $r): array
         'date' => $r['rdate'], 'time' => $r['rtime'], 'people' => (int)$r['people'], 'notes' => dec($r['notes']),
         'status' => $r['status'], 'source' => $r['source'], 'created_at' => $r['created_at'],
         'customer' => (int)($r['customer_id'] ?? 0) > 0,
-        'cancel_by' => (string)($r['cancel_by'] ?? ''),   // cliente o restaurante
+        'cancel_by' => (string)($r['cancel_by'] ?? ''),   // cliente, restaurante o sistema (no validó el teléfono a tiempo)
+        'verify_until' => $r['verify_until'] ?? null,     // hasta cuándo tiene el cliente para validar su teléfono
         'lang' => (string)($r['lang'] ?? 'es'),           // idioma en el que reservó
     ];
 }
@@ -333,7 +405,8 @@ function set_reservation_status(int $id, string $status): array
 {
     if (!in_array($status, RES_STATUSES, true)) throw new ValidationError('Estado no válido');
     $before = get_reservation($id);
-    q('UPDATE reservations SET status = ?, cancel_by = ?, updated_at = ? WHERE id = ?', [$status, $status === 'cancelada' ? 'restaurante' : '', now(), $id]);
+    // Lo que haga el restaurante manda: la reserva deja de tener plazo para validar el teléfono
+    q('UPDATE reservations SET status = ?, cancel_by = ?, verify_until = NULL, updated_at = ? WHERE id = ?', [$status, $status === 'cancelada' ? 'restaurante' : '', now(), $id]);
     $after = get_reservation($id);
     // Al aceptar una reserva de la web, el WhatsApp con el enlace sale solo si la API de Meta está configurada
     $wa = null;
@@ -341,6 +414,9 @@ function set_reservation_status(int $id, string $status): array
         $wa = wa_send_confirmation(q('SELECT * FROM reservations WHERE id = ?', [$id])->fetch());
     }
     if ($before['status'] !== $status) notify_customer($after);
+    if ($status === 'confirmada' && $before['status'] !== 'confirmada' && $after['source'] === 'web' && wa_done_ready()) {
+        wa_send_done(q('SELECT * FROM reservations WHERE id = ?', [$id])->fetch());
+    }
     return get_reservation_admin($id) + ($wa === null ? [] : ['wa_sent' => $wa === '', 'wa_error' => $wa]);
 }
 
