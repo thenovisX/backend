@@ -202,3 +202,8 @@ img[data-zoom] { cursor: zoom-in; }
 .r-erase-msg:empty { display: none; }
 .r-erase-msg.is-err { color: #B3362B; }
 .r-hp { position: absolute !important; left: -9999px; }
+
+/* Crédito del diseñador (credito_disenador()): dentro del pie del tema, o al final de la página si el tema no lo pone */
+.r-credito { white-space: nowrap; }
+.r-credito a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.r-credito-fin { margin: 0; padding: 14px 16px; text-align: center; font-size: .82rem; opacity: .75; }

@@ -2,7 +2,8 @@
 /*
  * Piezas comunes del tema Base: abrir() pinta el <head> y la cabecera; cerrar(), el pie.
  * Lo único obligatorio en cualquier tema: llamar a head_tags() dentro de <head> y a body_end() antes de </body>,
- * y tener en el pie los enlaces legales y cookies_link().
+ * y tener en el pie los enlaces legales y cookies_link(). credito_disenador() pinta «Diseño web: The Novis» (si el tema
+ * no lo pone, body_end() lo añade al final de la página).
  */
 
 function abrir(string $titulo, string $clase = ''): void
@@ -67,7 +68,7 @@ function cerrar(): void
       <p class="pie-links"><a href="cuenta.php"><?= t('Mi cuenta') ?></a><a href="legal.php#politicas"><?= t('Políticas de reserva') ?></a><a href="legal.php#aviso"><?= t('Aviso legal') ?></a><a href="legal.php#privacidad"><?= t('Privacidad') ?></a><a href="borrar-datos.php"><?= t('Borrar mis datos') ?></a><a href="legal.php#cookies">Cookies</a><?= cookies_link() ?></p>
     </div>
   </div>
-  <p class="cont pie-legal">© <?= date('Y') ?> <?= h($s['name']) ?>.<?php $cr = photo_credits(); if ($cr): ?> <?= t('Fotos de') ?> <?php $i = 0; foreach ($cr as $p): ?><?= $i++ ? ', ' : '' ?><a href="<?= h($p['url']) ?>" target="_blank" rel="noopener"><?= h($p['by']) ?></a><?php endforeach; ?> <?= t('en Unsplash') ?>.<?php endif; ?></p>
+  <p class="cont pie-legal">© <?= date('Y') ?> <?= h($s['name']) ?>.<?php $cr = photo_credits(); if ($cr): ?> <?= t('Fotos de') ?> <?php $i = 0; foreach ($cr as $p): ?><?= $i++ ? ', ' : '' ?><a href="<?= h($p['url']) ?>" target="_blank" rel="noopener"><?= h($p['by']) ?></a><?php endforeach; ?> <?= t('en Unsplash') ?>.<?php endif; ?> <?= credito_disenador() ?></p>
 </footer>
 <?php body_end(); ?>
 <script src="<?= asset('tema.js') ?>" defer></script>

@@ -13,7 +13,7 @@ Idioma: la web pública manda `?lang=es|en|pt|gl` (o la cookie `idioma`) y los m
 | `info` | GET | — | nombre, frase, contacto, horario, días cerrados, políticas |
 | `menu` | GET | — | carta: `categories` (con `dishes`), `allergens` y `carta_on` y `menus` (menús activos traducidos) |
 | `slots&date=AAAA-MM-DD` | GET | — | `open`, `reason`, `slots: [{time, left}]` |
-| `reserve` | POST | `date`, `time`, `people`, `name`, `phone`, `email`?, `notes`?, `privacy: 1`, `website: ''` | `id`, `when`, `message`, `linked` (sale en una cuenta), `email` |
+| `reserve` | POST | `date`, `time`, `people`, `name`, `phone`, `email`?, `notes`?, `privacy: 1`, `website: ''` | `id`, `status`, `when`, `message`, `linked` (sale en una cuenta), `email`, `verify` (true si el cliente tiene que validar su teléfono con el WhatsApp que se le acaba de enviar) y `verify_minutes` |
 | `erase_request` | POST JSON | `contact` (email o teléfono): pide borrar todos los datos; responde siempre lo mismo. Con email llega un enlace; con teléfono, la petición sale en la app |
 
 Límite: 5 reservas por hora desde la misma conexión. `website` es un campo trampa para bots y tiene que ir vacío.

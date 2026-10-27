@@ -48,20 +48,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $token = (string)($_POST['t'] ?? '');
     $cancelar = ($_POST['accion'] ?? '') === 'cancelar';
     if ($cancelar) cancel_by_link($id, $token);
-    else confirm_by_customer($id, $token);
-    header('Location: confirmar.php?r=' . $id . '&t=' . rawurlencode($token) . ($cancelar ? '' : '&hecho=1'), true, 303);
+    else [$hecho] = confirm_by_customer($id, $token);
+    header('Location: confirmar.php?r=' . $id . '&t=' . rawurlencode($token) . ($cancelar ? '' : '&hecho=' . (($hecho ?? '') === 'completa' ? 'completa' : '1')), true, 303);
     exit;
 }
 [$state, $r] = peek_by_customer($id, $token);
 if ($state === 'ya' && isset($_GET['hecho'])) $state = 'confirmada';
+if ($state === 'cancelada' && ($_GET['hecho'] ?? '') === 'completa') $state = 'completa';
 $ok = in_array($state, ['confirmada', 'ya'], true);
 $pend = $state === 'pendiente';
 
 $errores = [
     // Cancelada por el cliente (desde el enlace o su cuenta) o por el restaurante (también si la borró en el panel)
-    'cancelada' => ($r['cancel_by'] ?? '') === 'restaurante'
-        ? [t('Reserva cancelada'), t('El restaurante ha cancelado esta reserva.') . ($s['phone'] ? ' ' . t('Si tienes dudas, llámanos al %s.', $s['phone']) : '')]
-        : [t('Reserva cancelada'), t('Tu reserva está cancelada. Si quieres venir otro día, haz una reserva nueva: tardas un minuto.')],
+    'cancelada' => match ($r['cancel_by'] ?? '') {
+        'restaurante' => [t('Reserva cancelada'), t('El restaurante ha cancelado esta reserva.') . ($s['phone'] ? ' ' . t('Si tienes dudas, llámanos al %s.', $s['phone']) : '')],
+        // No validó el teléfono a tiempo (ver expire_unverified())
+        'sistema' => [t('Este enlace ha caducado'), t('No se validó el teléfono a tiempo y la reserva se ha anulado. Si quieres venir, haz una reserva nueva: tardas un minuto.')],
+        default => [t('Reserva cancelada'), t('Tu reserva está cancelada. Si quieres venir otro día, haz una reserva nueva: tardas un minuto.')],
+    },
+    // Validó después del plazo y, mientras tanto, otra reserva ocupó la mesa
+    'completa'  => [t('Esa hora se ha completado'), t('Ha pasado el plazo para validar el teléfono y mientras tanto se han ocupado las mesas. Prueba con otra hora.')],
     'rechazada' => [t('No pudimos atender esta reserva'), t('Prueba con otro día u otra hora.')],
     'pasada'    => [t('Este enlace ha caducado'), t('La fecha de la reserva ya ha pasado.')],
     'invalido'  => [t('Este enlace no funciona'), t('Puede que se haya copiado incompleto. Ábrelo otra vez desde el WhatsApp o haz una reserva nueva.')],
@@ -73,7 +79,7 @@ if ($ok || $pend) {
 }
 
 tema_render('confirmar', [
-    'estado' => $state,                       // pendiente, confirmada, ya, cancelada, rechazada, pasada, invalido
+    'estado' => $state,                       // pendiente, confirmada, ya, cancelada, completa, rechazada, pasada, invalido
     'ok' => $ok,                              // true si la reserva está confirmada (confirmada o ya)
     'pendiente' => $pend,                     // true si falta que el cliente pulse «Confirmar»: pinta confirmar_form()
     'reserva' => $ok || $pend ? $r : null,    // id, name, date, time, people…

@@ -50,6 +50,7 @@ function purge_old_reservations(bool $force = false): int
     q('DELETE FROM customers WHERE verified_at IS NULL AND created_at < ?', [date('Y-m-d H:i:s', time() - 7 * 86400)]);
     // Registro de consentimientos: 3 años (plazo de prescripción de las infracciones de la LOPDGDD)
     q('DELETE FROM audit_log WHERE at < ?', [date('Y-m-d H:i:s', time() - 3 * 365 * 86400)]);
+    expire_unverified();
     // Reservas borradas desde el panel: se guardaban solo para que el enlace dijera «cancelada»; fuera al pasar
     q('DELETE FROM reservations WHERE deleted = 1 AND (rdate < ? OR (rdate = ? AND rtime <= ?))', [$d, $d, $t]);
     return q("UPDATE reservations SET name = 'Reserva pasada', phone = '', email = '', email_idx = '', notes = '', ip = ''
@@ -57,7 +58,7 @@ function purge_old_reservations(bool $force = false): int
 }
 
 /** Actualiza la base de datos de instalaciones anteriores sin perder datos. */
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 /** Versión de las condiciones y la privacidad: se guarda con cada aceptación. Súbela si cambias los textos. */
 const LEGAL_VERSION = '2026-10-22';
 function ensure_schema(): void
@@ -154,6 +155,10 @@ function ensure_schema(): void
             try { db()->exec($sql); } catch (Throwable $e) { /* ya existe */ }
         }
     }
+    if ($v < 11) {
+        // v11: plazo para validar el teléfono por WhatsApp (reservas que esperan esa validación)
+        try { db()->exec('ALTER TABLE reservations ADD COLUMN verify_until DATETIME NULL'); } catch (Throwable $e) { /* ya existe */ }
+    }
     q("DELETE FROM settings WHERE k = '_schema'");
     q("INSERT INTO settings (k, v) VALUES ('_schema', ?)", [(string)SCHEMA_VERSION]);
 }
@@ -188,6 +193,7 @@ function make_pdo(array $c): PDO
     if (!$c) throw new RuntimeException('Falta config.php');
     if (($c['db_driver'] ?? 'mysql') === 'sqlite') {
         $pdo = new PDO('sqlite:' . $c['db_path']);
+        $pdo->setAttribute(PDO::ATTR_TIMEOUT, 10); // si otra visita está escribiendo, espera en vez de fallar
     } else {
         $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $c['db_host'], $c['db_name']);
         $pdo = new PDO($dsn, $c['db_user'], $c['db_pass']);
@@ -265,6 +271,9 @@ const SETTINGS_DEFAULTS = [
     'wa_template_lang' => 'es', // idioma por defecto de la plantilla (es, es_ES, en_US…)
     'wa_remind_on'  => false,  // recordatorio 24 h y 12 h antes de cada reserva confirmada
     'wa_remind_template' => '', // plantilla aprobada del recordatorio (vacío = texto libre)
+    'wa_verify_on'  => false,  // el cliente valida su teléfono con el enlace del WhatsApp al reservar (sin esperar al restaurante)
+    'wa_done_on'    => false,  // WhatsApp «reserva registrada» cuando la reserva queda confirmada
+    'wa_done_template' => '',  // plantilla aprobada de «reserva registrada» (vacío = texto libre)
     // Horario: día ISO (1 = lunes … 7 = domingo) => lista de franjas [inicio, fin]
     'hours'         => [
         '1' => [],
@@ -344,7 +353,7 @@ function settings_save(array $values): array
             $clean[$k] = substr(preg_replace('/\D/', '', (string)$v), 0, 30);
             continue;
         }
-        if ($k === 'wa_template' || $k === 'wa_remind_template') {
+        if (in_array($k, ['wa_template', 'wa_remind_template', 'wa_done_template'], true)) {
             $v = mb_strtolower(trim((string)$v));
             if ($v !== '' && !preg_match('/^[a-z0-9_]{1,512}$/', $v)) throw new ValidationError('El nombre de la plantilla solo lleva minúsculas, números y guiones bajos, como en Meta');
             $clean[$k] = $v;
@@ -408,10 +417,11 @@ function settings_save(array $values): array
         }
         if (!function_exists('curl_init')) throw new ValidationError('El servidor no tiene cURL activado: pídelo en el hosting');
     }
-    if (!empty($clean['wa_remind_on'])) {
+    foreach (['wa_remind_on' => 'los recordatorios', 'wa_verify_on' => 'la validación del teléfono', 'wa_done_on' => 'el aviso de reserva registrada'] as $sw => $what) {
+        if (empty($clean[$sw])) continue;
         $cur = settings();
         if (($clean['wa_phone_id'] ?? $cur['wa_phone_id']) === '' || (($clean['wa_token'] ?? $cur['wa_token']) === '')) {
-            throw new ValidationError('Para activar los recordatorios pon el identificador del número y el token de Meta');
+            throw new ValidationError("Para activar $what pon el identificador del número y el token de Meta");
         }
     }
 

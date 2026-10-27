@@ -512,7 +512,7 @@
       <div class="res-time">${showDate ? `<small>${esc(fmtShort(r.date))}</small>` : ''}<b>${esc(r.time)}</b>${endTime(r) && ACTIVE.includes(r.status) ? `<small class="res-end" title="Mesa ocupada hasta las ${endTime(r)}">hasta ${endTime(r)}</small>` : ''}</div>
       <div class="res-main">
         <p class="res-name">${esc(r.name)}</p>
-        <p class="res-meta"><span>${r.people} ${r.people === 1 ? 'persona' : 'personas'}</span><span class="chip chip-${r.status}">${STATUS[r.status]}</span>${r.source === 'panel' ? '<span class="by-hand">a mano</span>' : ''}${r.customer ? '<span class="by-hand">con cuenta</span>' : ''}</p>
+        <p class="res-meta"><span>${r.people} ${r.people === 1 ? 'persona' : 'personas'}</span><span class="chip chip-${r.status}">${STATUS[r.status]}</span>${r.source === 'panel' ? '<span class="by-hand">a mano</span>' : ''}${r.customer ? '<span class="by-hand">con cuenta</span>' : ''}${r.status === 'esperando' && r.verify_until ? `<span class="by-hand">validando teléfono hasta las ${esc(r.verify_until.slice(11, 16))}</span>` : ''}</p>
         ${r.notes ? `<p class="res-notes">${esc(r.notes)}</p>` : ''}
         ${actions.length ? `<div class="res-actions">${actions.join('')}</div>` : ''}
       </div></article>`;
@@ -1405,7 +1405,7 @@
           <button class="btn btn-line" type="button" data-mail-test>Enviar un email de prueba</button>
           <p class="help">La prueba llega a «${esc(s.notify_email || s.email || 'el email de avisos')}». Gmail permite unos 500 emails al día, de sobra para un restaurante.</p>
         </form>`),
-      sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on ? [s.wa_on && 'sale solo al aceptar', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
+      sec('whatsapp', 'WhatsApp automático', s.wa_on || s.wa_remind_on || s.wa_verify_on || s.wa_done_on ? [s.wa_on && 'sale solo al aceptar', s.wa_verify_on && 'el cliente valida su teléfono', s.wa_done_on && 'aviso de reserva registrada', s.wa_remind_on && 'recordatorios activados'].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) : 'Confirmaciones y recordatorios sin abrir el móvil', `
         <form class="form" data-form="whatsapp" novalidate>
           <p class="help">Con la API oficial de WhatsApp Business (Meta), al aceptar una reserva el mensaje con el enlace para confirmar le llega al cliente solo. Si algo falla, puedes seguir mandándolo a mano.</p>
           <ol class="steps">
@@ -1421,6 +1421,14 @@
           </div>
           <p class="help">Si la plantilla está traducida en Meta a inglés (en) o portugués (pt_PT), al cliente le llega en su idioma. Sin plantilla, Meta solo entrega el mensaje si el cliente te ha escrito en las últimas 24 horas.</p>
           <label class="switch-row">Enviar el WhatsApp automáticamente al aceptar <span class="sw"><input type="checkbox" name="wa_on" ${s.wa_on ? 'checked' : ''}><span></span></span></label>
+          <p><b>Validar el teléfono del cliente</b></p>
+          <p class="help">Al reservar en la web, el WhatsApp con el enlace le llega al cliente en ese momento, sin esperar a que lo aceptes. Cuando pulsa «Confirmar mi reserva», su teléfono queda validado y la reserva pasa sola a confirmada (te llega el aviso por email). Si no lo hace en 30 minutos, la reserva se anula y la mesa queda libre. Usa la misma plantilla de 5 variables. Si Meta da error, la reserva te llega como petición normal.</p>
+          <label class="switch-row">Pedir que el cliente valide su teléfono por WhatsApp <span class="sw"><input type="checkbox" name="wa_verify_on" ${s.wa_verify_on ? 'checked' : ''}><span></span></span></label>
+          <p><b>Reserva registrada</b></p>
+          <p class="help">Cuando una reserva de la web queda confirmada (porque el cliente pulsa el enlace o porque la confirmas tú), le llega un WhatsApp diciendo que su reserva está registrada.</p>
+          ${field('wa_done_template', 'Plantilla de reserva registrada', 'text', 'placeholder="reserva_registrada" autocapitalize="off" autocomplete="off"')}
+          <p class="help">Plantilla de Utilidad con 4 variables: {{1}} nombre, {{2}} día, {{3}} hora y {{4}} personas. Por ejemplo: «Hola {{1}}, tu reserva para el {{2}} a las {{3}} ({{4}}) está registrada. ¡Te esperamos!». Sin plantilla, Meta casi nunca lo entrega, porque el cliente no te ha escrito antes.</p>
+          <label class="switch-row">Avisar por WhatsApp cuando la reserva quede registrada <span class="sw"><input type="checkbox" name="wa_done_on" ${s.wa_done_on ? 'checked' : ''}><span></span></span></label>
           <p><b>Recordatorios</b></p>
           <p class="help">A las reservas confirmadas les llega un WhatsApp 24 horas y 12 horas antes con el día, la hora y las personas. Si confirman con menos tiempo, solo les llega el que aún toque.</p>
           ${field('wa_remind_template', 'Plantilla del recordatorio', 'text', 'placeholder="recordatorio_reserva" autocapitalize="off" autocomplete="off"')}

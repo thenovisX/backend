@@ -131,6 +131,11 @@ Sin esto, los emails salen desde el hosting y a veces terminan en spam. Con Gmai
 
 Si algo falla, el error sale en esa misma sección y la reserva no se pierde: en su ficha tienes **Enviar a mano**.
 
+Hay dos interruptores más, también opcionales:
+
+- **«Pedir que el cliente valide su teléfono por WhatsApp»**: al reservar en la web, el WhatsApp con el enlace le llega al cliente en ese momento, sin esperar a que tú lo aceptes. Cuando pulsa «Confirmar mi reserva», su teléfono queda validado y la reserva pasa sola a **confirmada** (te llega un email). Mientras tanto la ves en Peticiones, en «Esperando que el cliente confirme», con la hora límite. Si no valida en 30 minutos, la reserva se anula y la mesa queda libre. Usa la misma plantilla de confirmar. Si Meta da error, la reserva te llega como una petición normal.
+- **«Avisar por WhatsApp cuando la reserva quede registrada»**: cuando una reserva de la web queda confirmada (la confirme el cliente o tú), le llega un WhatsApp diciendo que está registrada. Necesita otra plantilla de Utilidad con 4 variables, por ejemplo `reserva_registrada`: «Hola {{1}}, tu reserva para el {{2}} a las {{3}} ({{4}}) está registrada. ¡Te esperamos!».
+
 ### 5.3. Que los recordatorios salgan a su hora (tarea programada)
 
 Los recordatorios salen cuando alguien visita la web o usa la app. Para que salgan puntuales aunque no entre nadie, crea una tarea programada:

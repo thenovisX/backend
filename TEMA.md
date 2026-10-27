@@ -74,6 +74,7 @@ Imprime siempre con `h()`: `<?= h($s['name']) ?>`.
 | `photo_img('portada', 1200, '100vw')` | `<img>` completo con `srcset` y `alt` |
 | `photo('portada', 1200)` / `photo_abs(...)` | Solo la dirección de la foto (relativa / completa) |
 | `photo_credits()` | Autores de las fotos de ejemplo que siguen puestas (para el pie) |
+| `credito_disenador('clase')` | «Diseño web: The Novis» con enlace a thenovis.com. Ponlo en el pie; si el tema no lo llama, `body_end()` lo añade al final de la página |
 | `horario()` | `[['dia' => 'Lunes', 'texto' => '13:00–16:00', 'cocina' => '13:30–15:30' o '', 'hoy' => bool], …]` (`cocina` solo si hay horario de cocina y es distinto) |
 | `horario_hoy()` | Horario de hoy, `'Cerrado'` o `'Cerrado hoy'` |
 | `politicas()` | `[['titulo' => 'Grupos', 'texto' => '…'], …]` |
