@@ -85,6 +85,8 @@ La rama **`hostinger`** contiene solo la web, con `index.php` en la raíz. **No 
 
 Guarda una copia de `config.php`: sin él no se pueden leer los datos cifrados.
 
+**Webs instaladas antes de noviembre de 2026:** añade a `config.php` la dirección fija de la web, `'base_url' => 'https://dominio-del-cliente.com',`, para que los enlaces de los emails (contraseña, activación) no dependan de la cabecera Host. Opciones de seguridad en `config.sample.php` (`rate_limit`, `cors_origins`, `csp`). Detalles en [docs/AUDITORIA-SEGURIDAD.md](docs/AUDITORIA-SEGURIDAD.md).
+
 ## 2. App de gestión
 
 **Android:** el APK se genera a mano desde GitHub → **Actions** → «Compilar app Android y web» → **Run workflow**, y aparece en **Releases**. **Un mismo APK vale para todos los clientes**: al abrirla, pide la dirección de la web.

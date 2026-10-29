@@ -7,15 +7,19 @@ Documento interno. Rellena los datos de contacto y guárdalo donde lo encuentres
 | Riesgo | Medida |
 |---|---|
 | Tráfico interceptado | HTTPS obligatorio (redirección en `.htaccess`) y HSTS |
-| Contraseñas robadas | Nunca se guardan: solo huella `password_hash` (bcrypt) con sal |
+| Contraseñas robadas | Nunca se guardan: solo huella Argon2id (o bcrypt coste 12 si el PHP no trae Argon2). Las huellas antiguas se rehacen solas al entrar |
 | Copia de la base de datos | Nombre, teléfono, email, notas e IP cifrados (libsodium, clave de 256 bits derivada del `secret` de `config.php`) |
 | Datos que sobran | Los datos personales de cada reserva se borran a las 24 h; cuentas sin activar a los 7 días; registro de auditoría a los 3 años. El aviso por email al restaurante no lleva teléfono ni email |
 | Terceros sin necesidad | Tipografías y fotos servidas desde el propio hosting; Google Maps solo al pulsar «Mostrar el mapa»; analítica y píxeles solo con consentimiento |
 | Contraseña del correo (SMTP) | Cifrada en la base de datos y nunca enviada a la app |
-| Fuerza bruta | Bloqueo de 15 min tras 10 intentos (panel y clientes) |
+| Fuerza bruta | Bloqueo de 15 min tras 10 fallos por IP y 20 por cuenta (panel y clientes); 5 altas o reenvíos por IP y hora; 5 fallos de la contraseña actual por cuenta. Límite general de la API: 240 peticiones por minuto y por IP |
 | Contraseña olvidada | Enlace por email con token aleatorio de 256 bits, de un solo uso y válido 1 hora; solo se guarda su huella. Pedir otro anula el anterior, como mucho 5 peticiones cada 15 min por IP y la respuesta no revela si la cuenta existe. En el panel, cambiarla cierra todas las sesiones de ese usuario |
 | Cuentas con emails ajenos | Doble opt-in: la cuenta no funciona hasta abrir el enlace del email |
-| Peticiones desde otras webs | Comprobación de origen y cookies `SameSite=Lax`, `HttpOnly`, `Secure` |
+| Peticiones desde otras webs | Comprobación de origen (Origin y Sec-Fetch-Site), cookies `SameSite=Lax`, `HttpOnly`, `Secure` y CORS solo para la propia web y la app |
+| Sesiones | Cambiar o recuperar la contraseña cierra las demás sesiones (clientes y panel). Las del panel caducan a los 90 días sin uso y, como mucho, a los 180 |
+| Reservas falsas | 5 por hora y 10 al día por IP, y como mucho 3 activas por email o cuenta. El aforo se comprueba con bloqueo en la base de datos (dos reservas a la vez no pueden pasarse del aforo) |
+| Código inyectado (XSS) | Todo se escapa al pintarlo y la cabecera Content-Security-Policy solo deja ejecutar scripts propios (con nonce) y los de analítica con consentimiento |
+| Reinstalar encima | `install.php` no hace nada si ya existe `config.php` |
 | Inyección SQL | Todas las consultas usan sentencias preparadas |
 | Archivos subidos | Solo imágenes; se recodifican a JPG y en `uploads/` no se ejecuta código |
 | Demostrar consentimientos | Tabla `audit_log`: registro, reservas, cambios de contraseña y datos (fecha, IP cifrada, navegador) |

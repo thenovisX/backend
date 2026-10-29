@@ -48,6 +48,9 @@ function purge_old_reservations(bool $force = false): int
     $t = date('H:i', $cut);
     // Cuentas que nunca se activaron (el enlace caduca a las 48 h): fuera a los 7 días
     q('DELETE FROM customers WHERE verified_at IS NULL AND created_at < ?', [date('Y-m-d H:i:s', time() - 7 * 86400)]);
+    // Intentos de acceso y contadores de límites: como mucho se miran 24 horas atrás
+    q('DELETE FROM login_attempts WHERE at < ?', [date('Y-m-d H:i:s', time() - 86400)]);
+    rate_limit_cleanup();
     // Registro de consentimientos: 3 años (plazo de prescripción de las infracciones de la LOPDGDD)
     q('DELETE FROM audit_log WHERE at < ?', [date('Y-m-d H:i:s', time() - 3 * 365 * 86400)]);
     // Reservas borradas desde el panel: se guardaban solo para que el enlace dijera «cancelada»; fuera al pasar
@@ -525,14 +528,184 @@ function client_ip(): string
     return hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . (cfg()['secret'] ?? ''));
 }
 
+/* ---------- Contraseñas ---------- */
+
+/** Huella de una contraseña: Argon2id si el PHP del hosting lo trae; si no, bcrypt con coste 12. */
+function pass_hash(string $pass): string
+{
+    return defined('PASSWORD_ARGON2ID')
+        ? password_hash($pass, PASSWORD_ARGON2ID)
+        : password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
+}
+
+/** ¿La huella guardada es de un algoritmo o coste antiguo (p. ej. bcrypt 10)? Se rehace al entrar. */
+function pass_needs_rehash(string $hash): bool
+{
+    return defined('PASSWORD_ARGON2ID')
+        ? password_needs_rehash($hash, PASSWORD_ARGON2ID)
+        : password_needs_rehash($hash, PASSWORD_BCRYPT, ['cost' => 12]);
+}
+
+/**
+ * Comprueba la contraseña. Si no hay cuenta ($hash null) hace igualmente un cálculo del mismo coste,
+ * para que el tiempo de respuesta no revele qué usuarios o emails existen.
+ */
+function pass_verify(string $pass, ?string $hash): bool
+{
+    static $dummy = null;
+    if ($hash === null || $hash === '') {
+        $dummy ??= pass_hash(bin2hex(random_bytes(8)));
+        password_verify($pass, $dummy);
+        return false;
+    }
+    return password_verify($pass, $hash);
+}
+
+/* ---------- Límites de intentos ---------- */
+
+/**
+ * Límite de intentos guardado en la tabla login_attempts. $bucket dice qué se cuenta y de quién
+ * (p. ej. 'login-ip|' . client_ip()). Lanza ValidationError si ya hay $max en los últimos $seconds.
+ * Devuelve la huella con la que apuntar un intento con throttle_hit().
+ */
+function throttle_check(string $bucket, int $max, int $seconds, string $msg = 'Demasiados intentos. Espera 15 minutos.'): string
+{
+    $key = hash('sha256', $bucket . '|' . (cfg()['secret'] ?? ''));
+    $n = (int)q('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND at > ?', [$key, date('Y-m-d H:i:s', time() - $seconds)])->fetchColumn();
+    if ($n >= $max) throw new ValidationError($msg);
+    return $key;
+}
+
+function throttle_hit(string $key): void
+{
+    q('INSERT INTO login_attempts (ip, at) VALUES (?, ?)', [$key, now()]);
+}
+
+function throttle_clear(string $key): void
+{
+    q('DELETE FROM login_attempts WHERE ip = ?', [$key]);
+}
+
+/**
+ * Límite general de la API por IP (peticiones por minuto, 'rate_limit' en config.php; 0 lo quita).
+ * Usa APCu si el hosting lo tiene y, si no, un archivo pequeño por IP en data/limites.
+ */
+function api_rate_limit(): void
+{
+    $max = (int)(cfg()['rate_limit'] ?? 240);
+    if ($max <= 0) return;
+    $key = client_ip();
+    $win = intdiv(time(), 60);
+    $n = 0;
+    if (function_exists('apcu_inc') && function_exists('apcu_enabled') && apcu_enabled()) {
+        $n = (int)apcu_inc("rl:$key:$win", 1, $ok, 120);
+    } else {
+        $dir = dirname(__DIR__) . '/data/limites';
+        if (!is_dir($dir)) @mkdir($dir, 0700, true);
+        $fp = @fopen($dir . '/' . $key, 'c+');
+        if (!$fp) return; // sin carpeta de datos escribible no se limita (mejor que bloquear la web)
+        flock($fp, LOCK_EX);
+        [$w, $c] = array_map('intval', explode(':', (string)stream_get_contents($fp)) + [0, 0]);
+        $n = $w === $win ? $c + 1 : 1;
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, "$win:$n");
+        flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+    if ($n > $max) {
+        header('Retry-After: 60');
+        fail(t('Demasiadas peticiones. Espera un minuto.'), 429);
+    }
+}
+
+function rate_limit_cleanup(): void
+{
+    foreach (glob(dirname(__DIR__) . '/data/limites/*') ?: [] as $f) {
+        if (filemtime($f) < time() - 300) @unlink($f);
+    }
+}
+
+/* ---------- Cabeceras de seguridad ---------- */
+
+/** Nonce de la Content-Security-Policy de esta página: va en cada <script> en línea. */
+function csp_nonce(): string
+{
+    static $n = null;
+    return $n ??= base64_encode(random_bytes(16));
+}
+
+/**
+ * Content-Security-Policy de las páginas de la web. El resto de cabeceras (HSTS, X-Frame-Options, nosniff,
+ * Referrer-Policy) las pone .htaccess. Solo se permiten scripts propios, los que llevan el nonce y los de
+ * Google Analytics / Tag Manager y el píxel de Meta (que solo se cargan con consentimiento).
+ * En config.php: 'csp' => false la quita; 'csp_report_only' => true solo avisa en la consola.
+ */
+function send_csp(): void
+{
+    $c = cfg();
+    if (headers_sent() || (array_key_exists('csp', $c) && !$c['csp'])) return;
+    $n = csp_nonce();
+    $policy = implode('; ', [
+        "default-src 'self'",
+        "script-src 'self' 'nonce-$n' https://www.googletagmanager.com https://*.googletagmanager.com https://connect.facebook.net",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https:",
+        "font-src 'self' data:",
+        "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://connect.facebook.net https://www.facebook.com",
+        "frame-src 'self' https://www.google.com https://maps.google.com https://www.googletagmanager.com https://www.facebook.com",
+        "frame-ancestors 'self'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "object-src 'none'",
+    ]);
+    header((!empty($c['csp_report_only']) ? 'Content-Security-Policy-Report-Only: ' : 'Content-Security-Policy: ') . $policy);
+}
+
+/**
+ * CORS de la API: solo la propia web, la app (Capacitor: https://localhost, capacitor://localhost) y los
+ * orígenes que se añadan en config.php ('cors_origins' => ['https://otra-web.com']). Nunca «*».
+ */
+function cors_headers(): void
+{
+    header('Vary: Origin');
+    $origin = (string)($_SERVER['HTTP_ORIGIN'] ?? '');
+    if ($origin === '' || !cors_allowed($origin)) return;
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Headers: Content-Type, X-Token, Authorization');
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Max-Age: 86400');
+}
+
+function cors_allowed(string $origin): bool
+{
+    $origin = rtrim(strtolower($origin), '/');
+    if (parse_url($origin, PHP_URL_HOST) === parse_url('//' . strtolower($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST)) return true;
+    if (preg_match('#^(https?|capacitor|ionic)://localhost(:\d+)?$#', $origin) || preg_match('#^https?://127\.0\.0\.1(:\d+)?$#', $origin)) return true;
+    $extra = array_map(fn($o) => rtrim(strtolower((string)$o), '/'), (array)(cfg()['cors_origins'] ?? []));
+    return in_array($origin, $extra, true);
+}
+
+/** Enlaces con tokens en el registro del servidor: solo en pruebas (debug) y en local, nunca en producción. */
+function dev_log(string $msg): void
+{
+    if (!empty(cfg()['debug']) && in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) error_log('[restaurante] ' . $msg);
+}
+
 /** URL pública de la raíz de la web (sin barra final). */
 function base_url(): string
 {
+    // Dirección fija de config.php: los enlaces de los emails (contraseña, activación) no dependen de la
+    // cabecera Host, que la puede falsear quien hace la petición.
+    $fixed = (string)(cfg()['base_url'] ?? '');
+    if ($fixed !== '') return rtrim($fixed, '/');
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $root = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
     if (preg_match('#/(api|panel)$#', $root)) $root = dirname($root);
-    return ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . rtrim($root, '/');
+    $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
+    if (!preg_match('/^[a-z0-9.-]+(:\d+)?$/i', $host)) $host = 'localhost';
+    return ($https ? 'https' : 'http') . '://' . $host . rtrim($root, '/');
 }
 
 function h($v): string

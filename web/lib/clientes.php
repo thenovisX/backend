@@ -32,8 +32,24 @@ function current_customer(): ?array
     static $c = false;
     if ($c !== false) return $c;
     if (!customer_session(false) || empty($_SESSION['cid'])) return $c = null;
-    $row = q('SELECT id, name, email, phone, created_at FROM customers WHERE id = ?', [(int)$_SESSION['cid']])->fetch();
-    return $c = ($row ? customer_plain($row) : null);
+    $row = q('SELECT id, name, email, phone, created_at, pass_hash FROM customers WHERE id = ?', [(int)$_SESSION['cid']])->fetch();
+    if (!$row) return $c = null;
+    // Si la contraseña ha cambiado desde que se abrió esta sesión (en otro dispositivo o con «¿Olvidaste
+    // la contraseña?»), la sesión deja de valer. Las sesiones de antes de este cambio se adoptan.
+    $fp = pass_fingerprint($row['pass_hash']);
+    if (!isset($_SESSION['pv'])) $_SESSION['pv'] = $fp;
+    if (!hash_equals((string)$_SESSION['pv'], $fp)) {
+        customer_logout();
+        return $c = null;
+    }
+    unset($row['pass_hash']);
+    return $c = customer_plain($row);
+}
+
+/** Huella corta de la huella de la contraseña: cambia cuando cambia la contraseña. */
+function pass_fingerprint(string $passHash): string
+{
+    return substr(hash_hmac('sha256', $passHash, 'sesion|' . (cfg()['secret'] ?? '')), 0, 32);
 }
 
 /** Fila de cliente con los datos descifrados. */
@@ -48,23 +64,25 @@ function customer_out(?array $c): ?array
     return $c ? ['id' => (int)$c['id'], 'name' => $c['name'], 'email' => $c['email'], 'phone' => $c['phone']] : null;
 }
 
-/** Bloquea peticiones con cookie que vengan de otra web (protección CSRF). */
+/**
+ * Bloquea peticiones con cookie que vengan de otra web (protección CSRF, además de SameSite=Lax).
+ * Mira la cabecera Origin y, si el navegador no la manda, Sec-Fetch-Site.
+ */
 function same_origin_only(): void
 {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     if ($origin !== '' && parse_url($origin, PHP_URL_HOST) !== parse_url('//' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST)) {
         fail('Petición no permitida', 403);
     }
+    if ($origin === '' && in_array($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '', ['cross-site', 'same-site'], true)) {
+        fail('Petición no permitida', 403);
+    }
 }
 
+/** Fallos de contraseña de clientes: 10 por IP cada 15 minutos. */
 function customer_attempts_guard(): string
 {
-    $ip = hash('sha256', 'cliente' . client_ip());
-    q('DELETE FROM login_attempts WHERE at < ?', [date('Y-m-d H:i:s', time() - 900)]);
-    if ((int)q('SELECT COUNT(*) FROM login_attempts WHERE ip = ?', [$ip])->fetchColumn() >= 10) {
-        throw new ValidationError('Demasiados intentos. Espera 15 minutos.');
-    }
-    return $ip;
+    return throttle_check('cliente-ip|' . client_ip(), 10, 900);
 }
 
 function customer_login_session(int $id): void
@@ -72,6 +90,7 @@ function customer_login_session(int $id): void
     customer_session(true);
     session_regenerate_id(true);
     $_SESSION['cid'] = $id;
+    $_SESSION['pv'] = pass_fingerprint((string)q('SELECT pass_hash FROM customers WHERE id = ?', [$id])->fetchColumn());
     q('UPDATE customers SET last_login = ? WHERE id = ?', [now(), $id]);
 }
 
@@ -87,18 +106,24 @@ function customer_register(array $in): array
     if ($phone !== '' && strlen(preg_replace('/\D/', '', $phone)) < 6) throw new ValidationError('El teléfono no parece correcto');
     if (strlen($pass) < 8) throw new ValidationError('La contraseña necesita al menos 8 caracteres');
     if (empty($in['privacy'])) throw new ValidationError('Tienes que aceptar las condiciones de uso y la política de privacidad');
-    $ip = customer_attempts_guard();
-    $old = q('SELECT id, verified_at FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
+    // Cada alta envía un email: como mucho 5 por IP cada hora (evita usar la web para bombardear buzones)
+    throttle_hit(throttle_check('registro-ip|' . client_ip(), 5, 3600, 'Demasiados intentos. Espera una hora.'));
+    $old = q('SELECT id, verified_at, name FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
     if ($old && $old['verified_at']) {
-        q('INSERT INTO login_attempts (ip, at) VALUES (?, ?)', [$ip, now()]);
-        throw new ValidationError('Ya hay una cuenta con ese email. Entra con tu contraseña.');
+        // Misma respuesta que un alta nueva, para no revelar qué emails tienen cuenta. Al dueño del email
+        // se le avisa por si quería entrar y no se acordaba.
+        $s = settings();
+        send_mail($email, t('Ya tienes una cuenta en %s', $s['name']),
+            t('Hola %s:', dec($old['name'])) . "\n\n" . t('Alguien (seguramente tú) ha intentado crear una cuenta con este email, pero ya tienes una. Entra con tu contraseña o, si no la recuerdas, pide una nueva aquí:') . "\n\n" . base_url() . '/recuperar.php'
+            . "\n\n" . t('Si no has sido tú, ignora este email: tu cuenta sigue igual.'));
+        return ['pending' => true, 'email' => $email];
     }
     if ($old) {
         // Cuenta sin activar con ese email: se sustituye (quien la creó no demostró que el email era suyo)
         q('DELETE FROM customers WHERE id = ?', [$old['id']]);
     }
     q('INSERT INTO customers (name, email, email_idx, phone, pass_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [enc($name), enc($email), email_idx($email), enc($phone), password_hash($pass, PASSWORD_DEFAULT), now()]);
+        [enc($name), enc($email), email_idx($email), enc($phone), pass_hash($pass), now()]);
     $id = (int)db()->lastInsertId();
     audit('registro', $id, 'Acepta condiciones de uso y privacidad, versión ' . LEGAL_VERSION);
     send_activation($id, $email, $name);
@@ -114,7 +139,7 @@ function send_activation(int $id, string $email, string $name): void
     $s = settings();
     send_mail($email, t('Activa tu cuenta en %s', $s['name']),
         t('Hola %s:', $name) . "\n\n" . t('Para activar tu cuenta en %s abre este enlace (caduca en 48 horas):', $s['name']) . "\n\n$url\n\n" . t('Si no has creado tú esta cuenta, ignora este email y no se activará.'));
-    if (!empty(cfg()['debug'])) error_log("[restaurante] enlace de activación: $url");
+    dev_log("enlace de activación: $url");
 }
 
 function customer_activate(int $id, string $token): bool
@@ -133,7 +158,7 @@ function customer_activate(int $id, string $token): bool
 function customer_resend(array $in): void
 {
     $email = mb_strtolower(str_in($in, 'email', 120, true, 'email'));
-    customer_attempts_guard();
+    throttle_hit(throttle_check('registro-ip|' . client_ip(), 5, 3600, 'Demasiados intentos. Espera una hora.'));
     $c = q('SELECT * FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
     // Respuesta igual exista o no la cuenta, para no revelar qué emails están registrados
     if ($c && !$c['verified_at']) send_activation((int)$c['id'], $email, dec($c['name']));
@@ -144,15 +169,19 @@ function customer_login(array $in): array
     $email = mb_strtolower(str_in($in, 'email', 120, true, 'email'));
     $pass = (string)($in['password'] ?? '');
     $ip = customer_attempts_guard();
+    $byEmail = throttle_check('cliente-email|' . email_idx($email), 20, 900);
     $c = q('SELECT * FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
-    if (!$c || !password_verify($pass, $c['pass_hash'])) {
-        q('INSERT INTO login_attempts (ip, at) VALUES (?, ?)', [$ip, now()]);
+    if (!pass_verify($pass, $c ? $c['pass_hash'] : null)) {
+        throttle_hit($ip);
+        throttle_hit($byEmail);
         throw new ValidationError('Email o contraseña incorrectos');
     }
     if (!$c['verified_at']) {
         throw new ValidationError('Tu cuenta aún no está activada. Abre el enlace que te enviamos por email (mira también en spam).');
     }
-    q('DELETE FROM login_attempts WHERE ip = ?', [$ip]);
+    throttle_clear($ip);
+    throttle_clear($byEmail);
+    if (pass_needs_rehash($c['pass_hash'])) q('UPDATE customers SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $c['id']]);
     customer_login_session((int)$c['id']);
     return customer_out(customer_plain($c));
 }
@@ -186,14 +215,20 @@ function customer_update(array $c, array $in): array
     $emailChanged = $email !== $c['email'];
     if ($new !== '' || $emailChanged) {
         $row = q('SELECT pass_hash FROM customers WHERE id = ?', [$c['id']])->fetch();
-        if (!password_verify((string)($in['password'] ?? ''), $row['pass_hash'])) {
+        $guard = throttle_check('password-cliente|' . $c['id'], 5, 900);
+        if (!pass_verify((string)($in['password'] ?? ''), $row['pass_hash'])) {
+            throttle_hit($guard);
             throw new ValidationError($emailChanged && $new === '' ? 'Para cambiar el email escribe tu contraseña actual (en «Cambiar contraseña»)' : 'La contraseña actual no es correcta');
         }
     }
     if ($new !== '') {
         if (strlen($new) < 8) throw new ValidationError('La nueva contraseña necesita al menos 8 caracteres');
-        q('UPDATE customers SET pass_hash = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $c['id']]);
+        $hash = pass_hash($new);
+        q('UPDATE customers SET pass_hash = ? WHERE id = ?', [$hash, $c['id']]);
         audit('cambio_contrasena', (int)$c['id']);
+        // Las demás sesiones abiertas de este cliente dejan de valer; esta sigue, con un identificador nuevo
+        session_regenerate_id(true);
+        $_SESSION['pv'] = pass_fingerprint($hash);
     }
     if ($emailChanged) audit('cambio_email', (int)$c['id']);
     if ($name !== $c['name'] || $phone !== $c['phone']) audit('cambio_datos', (int)$c['id']);
@@ -204,7 +239,11 @@ function customer_update(array $c, array $in): array
 function customer_delete(array $c, array $in): void
 {
     $row = q('SELECT pass_hash FROM customers WHERE id = ?', [$c['id']])->fetch();
-    if (!password_verify((string)($in['password'] ?? ''), $row['pass_hash'])) throw new ValidationError('La contraseña no es correcta');
+    $guard = throttle_check('password-cliente|' . $c['id'], 5, 900);
+    if (!pass_verify((string)($in['password'] ?? ''), $row['pass_hash'])) {
+        throttle_hit($guard);
+        throw new ValidationError('La contraseña no es correcta');
+    }
     // Las reservas se quedan para el restaurante, pero dejan de estar unidas a la cuenta
     q('UPDATE reservations SET customer_id = 0 WHERE customer_id = ?', [$c['id']]);
     q('DELETE FROM customers WHERE id = ?', [$c['id']]);

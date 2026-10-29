@@ -114,11 +114,12 @@ function create_public_reservation(array $in): array
     }
     $d = reservation_fields($in, false);
     $ip = client_ip();
-    $recent = (int)q('SELECT COUNT(*) FROM reservations WHERE ip = ? AND created_at > ?', [$ip, date('Y-m-d H:i:s', time() - 3600)])->fetchColumn();
-    if ($recent >= 5) throw new ValidationError('Has hecho demasiadas reservas seguidas. Llámanos por teléfono.');
+    reservation_spam_guard($ip, $d, $customer);
 
+    // Dos peticiones a la vez para la última mesa: la segunda espera a que termine la primera y ya ve
+    // ocupadas sus plazas (sin el bloqueo, las dos verían sitio y se pasaría del aforo).
     $pdo = db();
-    $pdo->beginTransaction();
+    reservation_lock();
     $slots = day_slots($d['rdate']);
     $slot = null;
     foreach ($slots['slots'] as $x) if ($x['time'] === $d['rtime']) $slot = $x;
@@ -167,6 +168,43 @@ function create_public_reservation(array $in): array
         'message' => t('Hemos recibido tu petición para el %s a las %s (%s).', fmt_date_l($d['rdate']), $d['rtime'], $d['people'] . ' ' . ($d['people'] === 1 ? t('persona') : t('personas')))
             . ' ' . t('El restaurante la revisará y te enviará un WhatsApp al %s con un enlace para confirmarla.', $d['phone']),
     ];
+}
+
+/**
+ * Abre una transacción y coge el «candado» de las reservas: una fila de settings que se modifica al empezar.
+ * En MySQL (InnoDB) bloquea esa fila hasta el commit; en SQLite la escritura coge el bloqueo de escritura de
+ * la base de datos. Así, comprobar el aforo y guardar la reserva es una operación atómica.
+ */
+function reservation_lock(): void
+{
+    if (!q("SELECT 1 FROM settings WHERE k = '_res_lock'")->fetchColumn()) {
+        try { q("INSERT INTO settings (k, v) VALUES ('_res_lock', '0')"); } catch (Throwable $e) { /* la creó otra petición */ }
+    }
+    db()->beginTransaction();
+    q("UPDATE settings SET v = ? WHERE k = '_res_lock'", [(string)time()]);
+}
+
+/**
+ * Límites contra reservas falsas que bloquean mesas (las peticiones pendientes ocupan sitio):
+ * 5 por hora y 10 al día desde la misma IP, y como mucho 3 reservas activas a la vez por email o cuenta.
+ */
+const RES_MAX_ACTIVE = 3;
+function reservation_spam_guard(string $ip, array $d, ?array $customer): void
+{
+    $since = fn(int $s) => date('Y-m-d H:i:s', time() - $s);
+    $msg = 'Has hecho demasiadas reservas seguidas. Llámanos por teléfono.';
+    if ((int)q('SELECT COUNT(*) FROM reservations WHERE ip = ? AND created_at > ?', [$ip, $since(3600)])->fetchColumn() >= 5) throw new ValidationError($msg);
+    if ((int)q('SELECT COUNT(*) FROM reservations WHERE ip = ? AND created_at > ?', [$ip, $since(86400)])->fetchColumn() >= 10) throw new ValidationError($msg);
+    $ph = implode(',', array_fill(0, count(RES_ACTIVE), '?'));
+    $who = [];
+    if ($d['email'] !== '') $who[] = ['email_idx = ?', email_idx($d['email'])];
+    if ($customer) $who[] = ['customer_id = ?', (int)$customer['id']];
+    foreach ($who as [$cond, $val]) {
+        $n = (int)q("SELECT COUNT(*) FROM reservations WHERE $cond AND deleted = 0 AND rdate >= ? AND status IN ($ph)", array_merge([$val, today()], RES_ACTIVE))->fetchColumn();
+        if ($n >= RES_MAX_ACTIVE) {
+            throw new ValidationError(t('Ya tienes %d reservas pendientes o confirmadas. Para hacer otra, cancela alguna o llámanos.', RES_MAX_ACTIVE));
+        }
+    }
 }
 
 function next_seq(): int
