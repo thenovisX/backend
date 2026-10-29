@@ -10,9 +10,11 @@ declare(strict_types=1);
 
 // Idioma de la visita (las páginas cargan este archivo antes de pintar nada)
 detect_lang();
+// Content-Security-Policy: los <script> en línea necesitan el atributo nonce con csp_nonce()
+send_csp();
 
 /** Versión del SDK: súbela si cambias algo de web/sdk/ para que los navegadores lo descarguen de nuevo. */
-const SDK_V = '5';
+const SDK_V = '6';
 
 /** Versión de los archivos del tema (la define el tema en tema.php; si no, 1). */
 function tema_v(): string
@@ -256,17 +258,17 @@ function head_tags(string $description = ''): void
 <link rel="manifest" href="manifest.php">
 <link rel="icon" href="icon.php?s=192" type="image/png">
 <link rel="apple-touch-icon" href="icon.php?s=180">
-<script>
+<script nonce="<?= csp_nonce() ?>">
   window.I18N = <?= json_encode(js_i18n(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   window.SITE_TRACKING = <?= json_encode(['ga' => $s['ga_id'], 'gtm' => $s['gtm_id'], 'pixel' => $s['pixel_id']], JSON_HEX_TAG) ?>;
   window.dataLayer = window.dataLayer || [];
   function gtag() { dataLayer.push(arguments); }
   gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500 });
 </script>
-<script src="sdk/consent.js?v=<?= SDK_V ?>" defer></script>
+<script src="sdk/consent.js?v=<?= SDK_V ?>" nonce="<?= csp_nonce() ?>" defer></script>
 <link rel="stylesheet" href="sdk/restaurante.css?v=<?= SDK_V ?>">
 <?php if ($home): ?>
-<script type="application/ld+json"><?= json_encode(array_filter([
+<script type="application/ld+json" nonce="<?= csp_nonce() ?>"><?= json_encode(array_filter([
     '@context' => 'https://schema.org', '@type' => 'Restaurant', 'name' => $s['name'],
     'address' => trim($s['address'] . ', ' . $s['city'], ', '), 'telephone' => $s['phone'],
     'acceptsReservations' => true, 'url' => base_url(), 'image' => $hero,
@@ -295,8 +297,8 @@ function body_end(array $opts = []): void
     $data = ['today' => today(), 'daysAhead' => (int)$s['days_ahead'], 'maxPeople' => (int)$s['max_people'], 'name' => $s['name'],
         'hours' => $s['hours'], 'closed' => $s['closed_dates'], 'phone' => $s['phone'], 'now' => date('Y-m-d H:i'), 'customer' => customer_out($c)];
     ?>
-<script>window.RESTAURANT = <?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;</script>
-<script src="sdk/restaurante.js?v=<?= SDK_V ?>" defer></script>
+<script nonce="<?= csp_nonce() ?>">window.RESTAURANT = <?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;</script>
+<script src="sdk/restaurante.js?v=<?= SDK_V ?>" nonce="<?= csp_nonce() ?>" defer></script>
     <?php
 }
 

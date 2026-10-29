@@ -15,7 +15,9 @@ date_default_timezone_set('Europe/Madrid');
 $done = false;
 $error = '';
 $configText = '';
-$already = is_file(__DIR__ . '/config.php') && installed();
+// Con config.php ya creado no se puede volver a instalar, aunque la base de datos falle en ese momento:
+// si no, cualquiera podría reinstalar encima, crear su propio administrador y cambiar la clave de cifrado.
+$already = is_file(__DIR__ . '/config.php');
 
 if (!$already && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $f = fn($k) => trim((string)($_POST[$k] ?? ''));
@@ -29,7 +31,11 @@ if (!$already && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             'db_pass'   => (string)($_POST['db_pass'] ?? ''),
             'db_path'   => __DIR__ . '/data/restaurante.sqlite',
             'timezone'  => 'Europe/Madrid',
-            'secret'    => bin2hex(random_bytes(16)),
+            'secret'    => bin2hex(random_bytes(32)),
+            // Dirección fija de la web: los enlaces de los emails no dependen de la cabecera Host
+            'base_url'  => base_url(),
+            // Peticiones por minuto y por IP a la API (0 = sin límite)
+            'rate_limit' => 240,
             'debug'     => false,
         ];
         if ($driver === 'mysql' && ($c['db_name'] === '' || $c['db_user'] === '')) throw new RuntimeException('Rellena los datos de la base de datos.');
@@ -51,7 +57,7 @@ if (!$already && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $pdo->beginTransaction();
         $pdo->prepare('DELETE FROM users WHERE username = ?')->execute([$user]);
         $pdo->prepare('INSERT INTO users (username, pass_hash, created_at) VALUES (?, ?, ?)')
-            ->execute([$user, password_hash($pass, PASSWORD_DEFAULT), date('Y-m-d H:i:s')]);
+            ->execute([$user, pass_hash($pass), date('Y-m-d H:i:s')]);
         $set = $pdo->prepare('INSERT INTO settings (k, v) VALUES (?, ?)');
         $pdo->exec('DELETE FROM settings');
         $initial = SETTINGS_DEFAULTS;
@@ -114,6 +120,7 @@ if (!$already && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 <?php if ($already): ?>
   <h1>La web ya está instalada</h1>
   <p>Por seguridad, <strong>borra el archivo <code>install.php</code></strong> desde el administrador de archivos de Hostinger.</p>
+  <p class="hint">Para instalarla de nuevo desde cero, borra antes <code>config.php</code> (sin él no se pueden leer los datos cifrados).</p>
   <p><a href="./">Ver la web</a> · <a href="panel/">Abrir el panel</a></p>
 <?php elseif ($done): ?>
   <h1>Instalación terminada</h1>

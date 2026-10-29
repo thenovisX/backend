@@ -404,6 +404,14 @@
     });
   });
 
+  // Formularios normales que piden confirmación antes de enviarse: <form method="post" data-confirm="¿Seguro…?">
+  // (sustituye a onsubmit="…", que la Content-Security-Policy no deja ejecutar)
+  $$('form[data-confirm]:not([data-api])').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!confirm(f.dataset.confirm)) e.preventDefault();
+    });
+  });
+
   // Formularios: <form data-api="c_login"> … <p data-error></p> <button type="submit">
   $$('form[data-api]').forEach(function (f) {
     f.addEventListener('submit', function (e) {

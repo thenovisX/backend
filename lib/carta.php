@@ -167,8 +167,10 @@ function uploads_dir(): string
 
 function remove_upload(string $rel): void
 {
+    // Solo archivos sueltos de uploads/ (nada de «uploads/../config.php»)
+    if (!preg_match('#^uploads/[A-Za-z0-9_-][A-Za-z0-9._-]*$#', $rel) || str_contains($rel, '..')) return;
     $f = dirname(__DIR__) . '/' . $rel;
-    if (str_starts_with($rel, 'uploads/') && is_file($f)) @unlink($f);
+    if (is_file($f)) @unlink($f);
 }
 
 function store_photo(array $file, int $dishId): string
