@@ -54,6 +54,7 @@ El resto es libre: `partes.php` (cabecera y pie compartidos), `assets/` (CSS, JS
 
 - **Nada de recursos de otras webs**: ni Google Fonts desde Google, ni imágenes o scripts de otros dominios. Descarga las fuentes a `tema/assets/fonts/` (las de Google Fonts tienen licencia libre). La política de privacidad dice que todo se sirve desde el propio servidor.
 - **Mapas**: si incrustas Google Maps, cárgalo solo cuando el visitante pulse un botón («Mostrar el mapa») y pon `const TEMA_GOOGLE_MAPS = true;` en `tema.php`. Así se añade el aviso en la página de cookies.
+- **Scripts y seguridad (CSP)**: la web manda una cabecera Content-Security-Policy. Los scripts del tema van en archivos de `tema/assets/` (`<script src="…" defer>`); si necesitas un `<script>` en línea, ponle `nonce="<?= csp_nonce() ?>"`. Nada de `onclick="…"` ni `onsubmit="…"`: usa `addEventListener` en `tema.js` (para pedir confirmación antes de enviar un formulario basta con `data-confirm="¿Seguro…?"`). Si incrustas algo de otro dominio, añádelo a `send_csp()` en `lib/core.php`.
 - **No cambies los textos legales** desde el tema: salen de `lib/legal.php` y se rellenan solos.
 - **Muestra la información de alérgenos** en la carta (los iconos con su nombre o la leyenda).
 

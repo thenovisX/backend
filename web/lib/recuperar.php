@@ -10,15 +10,10 @@ declare(strict_types=1);
 
 const RESET_MINUTES = 60;
 
-/** Límite por IP: 5 peticiones cada 15 minutos (usa la tabla login_attempts con su propia huella). */
+/** Límite por IP: 5 peticiones cada 15 minutos (cada una envía un email). */
 function reset_guard(string $kind): void
 {
-    $ip = hash('sha256', 'reset' . $kind . client_ip());
-    q('DELETE FROM login_attempts WHERE at < ?', [date('Y-m-d H:i:s', time() - 900)]);
-    if ((int)q('SELECT COUNT(*) FROM login_attempts WHERE ip = ?', [$ip])->fetchColumn() >= 5) {
-        throw new ValidationError('Demasiados intentos. Espera 15 minutos.');
-    }
-    q('INSERT INTO login_attempts (ip, at) VALUES (?, ?)', [$ip, now()]);
+    throttle_hit(throttle_check('reset-' . $kind . '|' . client_ip(), 5, 900));
 }
 
 /** Crea el token (anulando los anteriores de esa cuenta). Devuelve '' si se pidió otro hace menos de 2 minutos. */
@@ -81,7 +76,7 @@ function customer_forgot(array $in): void
         t('Hola %s:', $name) . "\n\n" . t('Para elegir una contraseña nueva abre este enlace (caduca en 1 hora y solo sirve una vez):') . "\n\n$url\n\n"
         . t('Si no lo has pedido tú, ignora este email: tu contraseña sigue igual.'));
     audit('recuperar_pedido', (int)$c['id']);
-    if (!empty(cfg()['debug'])) error_log("[restaurante] enlace para cambiar la contraseña: $url");
+    dev_log("enlace para cambiar la contraseña: $url");
 }
 
 /** Guarda la contraseña nueva del cliente y le deja dentro de su cuenta. */
@@ -92,7 +87,7 @@ function customer_reset(array $in): array
     $id = reset_use('customer', (string)($in['t'] ?? ''));
     $c = q('SELECT * FROM customers WHERE id = ?', [$id])->fetch();
     if (!$c) throw new ValidationError('El enlace para cambiar la contraseña no es válido o ha caducado. Pide otro.');
-    q('UPDATE customers SET pass_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
+    q('UPDATE customers SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $id]);
     audit('recuperar_cambiada', $id);
     customer_login_session($id);
     return customer_out(customer_plain($c));
@@ -128,7 +123,7 @@ function user_forgot(array $in): void
         "Hola:\n\nSe ha pedido cambiar la contraseña del usuario «{$u['username']}» en la app de gestión. Para elegir una nueva abre este enlace (caduca en 1 hora y solo sirve una vez):\n\n$url\n\n"
         . 'Si no lo has pedido tú, ignora este email: la contraseña sigue igual.'));
     audit('panel_recuperar_pedido', 0, 'Usuario del panel: ' . $u['username']);
-    if (!empty(cfg()['debug'])) error_log("[restaurante] enlace para cambiar la contraseña del panel: $url");
+    dev_log("enlace para cambiar la contraseña del panel: $url");
 }
 
 /** Comprueba el enlace antes de enseñar el formulario (no lo gasta). */
@@ -147,7 +142,7 @@ function user_reset(array $in): array
     $id = reset_use('user', (string)($in['t'] ?? ''));
     $u = q('SELECT * FROM users WHERE id = ?', [$id])->fetch();
     if (!$u) throw new ValidationError('El enlace para cambiar la contraseña no es válido o ha caducado. Pide otro.');
-    q('UPDATE users SET pass_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
+    q('UPDATE users SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $id]);
     // Quien tuviera la sesión abierta con la contraseña vieja tiene que volver a entrar
     q('DELETE FROM tokens WHERE user_id = ?', [$id]);
     audit('panel_recuperar_cambiada', 0, 'Usuario del panel: ' . $u['username']);

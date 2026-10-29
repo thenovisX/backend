@@ -8,19 +8,18 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/lib/bootstrap.php';
 
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Content-Type, X-Token, Authorization');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Max-Age: 86400');
+cors_headers(); // solo la propia web, la app y los orígenes de config.php (nunca «*»)
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 if (!installed()) fail('La web aún no está instalada. Abre install.php en el navegador.', 503);
+api_rate_limit();
 
 $r = (string)($_GET['r'] ?? '');
 $in = input();
@@ -268,7 +267,10 @@ try {
             out(true);
 
         case 'settings':
-            out(settings_admin() + ['allergens' => allergen_list(), 'web_photos' => web_photos_info()]);
+            $st = settings_admin();
+            // La dirección del cron lleva su clave: solo para quien puede cambiar los ajustes
+            if (!user_can($user, 'ajustes')) unset($st['cron_url'], $st['smtp_error'], $st['wa_error']);
+            out($st + ['allergens' => allergen_list(), 'web_photos' => web_photos_info()]);
         case 'web_photo':
             only_post();
             require_perm($user, 'ajustes');

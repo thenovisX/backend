@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-const TOKEN_DAYS = 90;
+const TOKEN_DAYS = 90;      // la sesión del panel caduca si no se usa en este tiempo…
+const TOKEN_MAX_DAYS = 180; // …y, aunque se use, como mucho dura esto (luego hay que volver a entrar)
 /** Permisos de los empleados. Ver las reservas y la carta lo pueden hacer todos. */
 const PERMS = [
     'reservas' => 'Gestionar reservas: aceptar, rechazar, apuntar, editar y borrar',
@@ -72,14 +73,14 @@ function user_save(array $me, array $in): array
             throw new ValidationError('Tiene que quedar al menos un administrador activo');
         }
         q('UPDATE users SET username = ?, name = ?, role = ?, perms = ?, active = ? WHERE id = ?', [$username, $name, $role, $perms, $active, $id]);
-        if ($pass !== '') q('UPDATE users SET pass_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
+        if ($pass !== '') q('UPDATE users SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $id]);
         // Si se desactiva o se le cambia la contraseña, se cierran sus sesiones (salvo la tuya)
         if (!$active || ($pass !== '' && $id !== (int)$me['id'])) q('DELETE FROM tokens WHERE user_id = ?', [$id]);
         audit('usuario_editado', 0, "Usuario del panel «{$username}» editado por {$me['username']}");
     } else {
         if ($pass === '') throw new ValidationError('Pon una contraseña para el usuario nuevo');
         q('INSERT INTO users (username, pass_hash, created_at, name, role, perms, active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$username, password_hash($pass, PASSWORD_DEFAULT), now(), $name, $role, $perms, $active]);
+            [$username, pass_hash($pass), now(), $name, $role, $perms, $active]);
         $id = (int)db()->lastInsertId();
         audit('usuario_creado', 0, "Usuario del panel «{$username}» creado por {$me['username']}");
     }
@@ -102,20 +103,22 @@ function login(array $in): array
 {
     $user = str_in($in, 'username', 60, true, 'usuario');
     $pass = (string)($in['password'] ?? '');
-    $ip = client_ip();
 
-    q('DELETE FROM login_attempts WHERE at < ?', [date('Y-m-d H:i:s', time() - 900)]);
-    $fails = (int)q('SELECT COUNT(*) FROM login_attempts WHERE ip = ?', [$ip])->fetchColumn();
-    if ($fails >= 10) throw new ValidationError('Demasiados intentos. Espera 15 minutos.');
+    // Fuerza bruta: 10 fallos por IP y 20 por usuario (aunque vengan de muchas IP) cada 15 minutos
+    $byIp = throttle_check('login-ip|' . client_ip(), 10, 900);
+    $byUser = throttle_check('login-user|' . mb_strtolower($user), 20, 900);
 
     $u = q('SELECT * FROM users WHERE username = ?', [$user])->fetch();
-    if (!$u || !password_verify($pass, $u['pass_hash'])) {
-        q('INSERT INTO login_attempts (ip, at) VALUES (?, ?)', [$ip, now()]);
+    if (!pass_verify($pass, $u ? $u['pass_hash'] : null)) {
+        throttle_hit($byIp);
+        throttle_hit($byUser);
         throw new ValidationError('Usuario o contraseña incorrectos');
     }
     if (isset($u['active']) && !(int)$u['active']) throw new ValidationError('Este usuario está desactivado. Habla con el administrador.');
-    q('DELETE FROM login_attempts WHERE ip = ?', [$ip]);
-    q('DELETE FROM tokens WHERE last_used < ?', [date('Y-m-d H:i:s', time() - TOKEN_DAYS * 86400)]);
+    throttle_clear($byIp);
+    throttle_clear($byUser);
+    if (pass_needs_rehash($u['pass_hash'])) q('UPDATE users SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $u['id']]);
+    q('DELETE FROM tokens WHERE last_used < ? OR created_at < ?', [date('Y-m-d H:i:s', time() - TOKEN_DAYS * 86400), date('Y-m-d H:i:s', time() - TOKEN_MAX_DAYS * 86400)]);
 
     $token = bin2hex(random_bytes(32));
     q('INSERT INTO tokens (token, user_id, created_at, last_used) VALUES (?, ?, ?, ?)', [hash('sha256', $token), $u['id'], now(), now()]);
@@ -134,8 +137,11 @@ function require_auth(): array
     $t = request_token();
     if ($t === '') fail('Inicia sesión', 401);
     $hash = hash('sha256', $t);
-    $u = q('SELECT u.*, t.last_used FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ?', [$hash])->fetch();
-    if (!$u || strtotime($u['last_used']) < time() - TOKEN_DAYS * 86400) fail('La sesión ha caducado. Vuelve a entrar.', 401);
+    $u = q('SELECT u.*, t.last_used, t.created_at AS token_created FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ?', [$hash])->fetch();
+    if (!$u || strtotime($u['last_used']) < time() - TOKEN_DAYS * 86400 || strtotime($u['token_created']) < time() - TOKEN_MAX_DAYS * 86400) {
+        if ($u) q('DELETE FROM tokens WHERE token = ?', [$hash]);
+        fail('La sesión ha caducado. Vuelve a entrar.', 401);
+    }
     if (isset($u['active']) && !(int)$u['active']) fail('Este usuario está desactivado. Habla con el administrador.', 401);
     unset($u['pass_hash']);
     if (strtotime($u['last_used']) < time() - 300) q('UPDATE tokens SET last_used = ? WHERE token = ?', [now(), $hash]);
@@ -153,9 +159,13 @@ function change_password(array $user, array $in): void
     $cur = (string)($in['current'] ?? '');
     $new = (string)($in['new'] ?? '');
     $u = q('SELECT * FROM users WHERE id = ?', [$user['id']])->fetch();
-    if (!password_verify($cur, $u['pass_hash'])) throw new ValidationError('La contraseña actual no es correcta');
+    $guard = throttle_check('password-user|' . $user['id'], 5, 900);
+    if (!pass_verify($cur, $u['pass_hash'])) {
+        throttle_hit($guard);
+        throw new ValidationError('La contraseña actual no es correcta');
+    }
     if (strlen($new) < 8) throw new ValidationError('La nueva contraseña necesita al menos 8 caracteres');
-    q('UPDATE users SET pass_hash = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $user['id']]);
+    q('UPDATE users SET pass_hash = ? WHERE id = ?', [pass_hash($new), $user['id']]);
     audit('admin_cambio_contrasena', 0, 'Usuario del panel: ' . $user['username']);
     // Cierra las demás sesiones
     q('DELETE FROM tokens WHERE user_id = ? AND token <> ?', [$user['id'], hash('sha256', request_token())]);

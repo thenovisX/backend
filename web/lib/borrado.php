@@ -82,7 +82,7 @@ function erase_request(array $in): array
     } else {
         q('INSERT INTO erase_requests (kind, contact, status, ip, created_at) VALUES (?, ?, ?, ?, ?)', [$kind, enc($v), 'nueva', $ip, now()]);
         restaurant_mail('Petición para borrar datos de un cliente',
-            "Un cliente ha pedido desde la web borrar sus datos con el teléfono " . $v . ".\n\nÁbrela en la app (Ajustes → Clientes con cuenta) y pulsa «Enviar enlace por WhatsApp». El cliente confirmará el borrado desde ese enlace.");
+            "Un cliente ha pedido desde la web borrar sus datos con el teléfono acabado en " . substr(phone_norm($v), -3) . ".\n\nÁbrela en la app (Ajustes → Clientes con cuenta) y pulsa «Enviar enlace por WhatsApp». El cliente confirmará el borrado desde ese enlace.");
     }
     return ['ok' => true, 'message' => $msg];
 }
