@@ -1,7 +1,7 @@
 # Graph Report - backend  (2026-11-04)
 
 ## Corpus Check
-- 87 files · ~127,892 words
+- 87 files · ~127,924 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 34 file(s) not represented in the graph (top: .xml 10, (none) 8, .css 5)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1da5155f`
+- Built from commit: `c5729ea5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -67,15 +67,15 @@
 10. `lang()` - 26 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `8.3 `remove_upload()` · Baja · corregido` --references--> `remove_upload()`  [INFERRED]
-  docs/AUDITORIA-SEGURIDAD.md → web/lib/carta.php
 - `Datos y cifrado` --references--> `enc()`  [INFERRED]
   docs/SALA-Y-COCINA.md → web/lib/cifrado.php
-- `1.2 Cookies y tokens · cumple` --references--> `customer_session()`  [INFERRED]
-  docs/AUDITORIA-SEGURIDAD.md → web/lib/clientes.php
-- `3.1 SQL / NoSQL injection · cumple` --references--> `q()`  [INFERRED]
-  docs/AUDITORIA-SEGURIDAD.md → web/lib/core.php
-- `6.3 Logs · Baja · corregido` --references--> `dev_log()`  [INFERRED]
+- `Clientes (cookie de sesión, mismo dominio)` --references--> `t()`  [INFERRED]
+  API.md → web/lib/i18n.php
+- `Cuenta del cliente: atributos `data-*`` --references--> `t()`  [INFERRED]
+  TEMA.md → web/lib/i18n.php
+- `8.3 `remove_upload()` · Baja · corregido` --references--> `remove_upload()`  [INFERRED]
+  docs/AUDITORIA-SEGURIDAD.md → web/lib/carta.php
+- `8.2 Enlaces de email con la cabecera Host · Media · corregido` --references--> `base_url()`  [INFERRED]
   docs/AUDITORIA-SEGURIDAD.md → web/lib/core.php
 
 ## Import Cycles
