@@ -10,6 +10,7 @@ Base reutilizable para hacer la web de un restaurante. Para cada cliente solo ha
 - **Rechazar con WhatsApp**: al rechazar una petición, la app propone un mensaje en el idioma del cliente con las horas libres de ese día cerca de la que pidió, o le dice que esperas verle otro día. Las reservas que cancela el cliente llegan como aviso a la app.
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
 - **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes con buscador.
+- **Sala y cocina** (`/sala/`, ver [docs/SALA-Y-COCINA.md](docs/SALA-Y-COCINA.md)): programa aparte para el servicio con plano del local por plantas (forma de la sala, mesas con tamaño y plazas, mesas fusionadas para eventos), pedidos por mesa (carta, menús, especiales y notas para la cocina) y pantalla de cocina en tiempo real. Las reservas reciben mesa solas, juntando mesas si hace falta, según las preferencias del restaurante. Cuentas propias creadas desde el panel; todo cifrado.
 - **Usuarios con permisos**: el administrador crea usuarios (por ejemplo, camareros que solo ven las reservas) y decide si pueden gestionar reservas, cambiar la carta o los ajustes.
 - **Horario de cocina** opcional: las reservas se ofrecen solo con la cocina abierta y la web lo muestra bajo el horario.
 - **Emails** desde el hosting o desde Gmail.
@@ -32,6 +33,7 @@ web/                → lo que se sube a Hostinger
   lib/              → el backend (reservas, clientes, carta, emails, textos legales…)
   sdk/              → JavaScript y CSS comunes: ventana de reserva, aviso de cookies, cuenta
   panel/            → la app de gestión en versión web (copia de app/www)
+  sala/             → Sala y cocina: plano, pedidos y pantalla de cocina (con su propia API, sala/api.php)
   install.php       → instalador
 app/                → la app Android (Capacitor); app/www es el código de la app
 scripts/            → utilidades (copiar el panel, generar iconos)
@@ -136,6 +138,8 @@ Los enlaces no ocupan espacio aparte: cada reserva guarda una clave de 32 caract
 cd web && php -S localhost:8080
 # Abre http://localhost:8080/install.php y elige SQLite
 ```
+
+**Pruebas**: `bash tests/run.sh` (Sala y cocina, con una base de datos SQLite de usar y tirar).
 
 **Cambiar la app de gestión**: edita `app/www/` y ejecuta `./scripts/build-panel.sh` para copiarla a `web/panel/`.
 

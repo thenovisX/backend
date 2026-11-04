@@ -147,6 +147,7 @@ function create_public_reservation(array $in): array
     ]);
     $id = (int)$pdo->lastInsertId();
     $pdo->commit();
+    sala_on_reservation($id); // mesa asignada sola si el restaurante lo quiere (Sala y cocina)
     audit('reserva', $cid, "Reserva #$id: acepta políticas de reserva y privacidad, versión " . LEGAL_VERSION);
 
     $when = fmt_date_es($d['rdate']) . ' a las ' . $d['rtime'];
@@ -242,6 +243,7 @@ function whatsapp_text(array $r, string $url): string
 function res_admin(array $row): array
 {
     $r = res_out($row);
+    $r['mesa'] = sala_res_label($r['id'], $r['date']); // mesas asignadas en Sala y cocina («» si no tiene)
     if ($r['source'] === 'web' && in_array($r['status'], ['pendiente', 'esperando'], true) && $r['phone'] !== '') {
         $url = confirm_url($row);
         $r['confirm_url'] = $url;
@@ -284,6 +286,7 @@ function confirm_by_customer(int $id, string $token): array
     if ($state !== 'pendiente') return [$state, $r];
     $row = q('SELECT customer_id FROM reservations WHERE id = ?', [$id])->fetch();
     q("UPDATE reservations SET status = 'confirmada', updated_at = ?, seq = ? WHERE id = ?", [now(), next_seq(), $id]);
+    sala_on_reservation($id);
     audit('reserva_confirmada_cliente', (int)$row['customer_id'], "Reserva #$id confirmada desde el enlace");
     $r = get_reservation($id);
     $s = settings();
@@ -373,6 +376,7 @@ function set_reservation_status(int $id, string $status): array
     $before = get_reservation($id);
     q('UPDATE reservations SET status = ?, cancel_by = ?, updated_at = ? WHERE id = ?', [$status, $status === 'cancelada' ? 'restaurante' : '', now(), $id]);
     $after = get_reservation($id);
+    sala_on_reservation($id);
     // Al aceptar una reserva de la web, el WhatsApp con el enlace sale solo si la API de Meta está configurada
     $wa = null;
     if ($status === 'esperando' && $before['status'] !== 'esperando' && $after['source'] === 'web' && wa_api_ready()) {
@@ -404,6 +408,7 @@ function save_reservation(array $in): array
         q('UPDATE reservations SET name=?, phone=?, email=?, email_idx=?, rdate=?, rtime=?, people=?, notes=?, updated_at=?, reminders=0 WHERE id=?', [
             enc($d['name']), enc($d['phone']), enc($d['email']), email_idx($d['email']), $d['rdate'], $d['rtime'], $d['people'], enc($d['notes']), now(), $id,
         ]);
+        sala_on_reservation($id); // si ya no cabe en su mesa (más personas, otra hora), se busca otra
         return get_reservation_admin($id);
     }
     q('INSERT INTO reservations (name, phone, email, email_idx, rdate, rtime, people, notes, status, source, ip, created_at, updated_at, seq)
@@ -411,7 +416,9 @@ function save_reservation(array $in): array
         enc($d['name']), enc($d['phone']), enc($d['email']), email_idx($d['email']), $d['rdate'], $d['rtime'], $d['people'], enc($d['notes']),
         'confirmada', 'panel', '', now(), now(), next_seq(),
     ]);
-    return get_reservation_admin((int)db()->lastInsertId());
+    $id = (int)db()->lastInsertId();
+    sala_on_reservation($id);
+    return get_reservation_admin($id);
 }
 
 /**
@@ -421,6 +428,7 @@ function save_reservation(array $in): array
 function delete_reservation(int $id): void
 {
     q("UPDATE reservations SET status = 'cancelada', cancel_by = 'restaurante', deleted = 1, updated_at = ? WHERE id = ?", [now(), $id]);
+    sala_on_reservation($id); // libera la mesa
 }
 
 /** El cliente cancela desde el enlace del WhatsApp o del email (solo por POST). Devuelve [estado, reserva]. */
@@ -429,6 +437,8 @@ function cancel_by_link(int $id, string $token): array
     [$state, $r] = peek_by_customer($id, $token);
     if (!in_array($state, ['pendiente', 'ya'], true)) return [$state, $r];
     q("UPDATE reservations SET status = 'cancelada', cancel_by = 'cliente', updated_at = ?, seq = ? WHERE id = ?", [now(), next_seq(), $id]);
+    sala_on_reservation($id);
+    sala_on_reservation($id);
     $row = q('SELECT customer_id FROM reservations WHERE id = ?', [$id])->fetch();
     audit('reserva_cancelada_cliente', (int)$row['customer_id'], "Reserva #$id cancelada desde el enlace");
     $r = get_reservation($id);

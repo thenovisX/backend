@@ -148,6 +148,20 @@ try {
             user_delete($user, $id);
             out(true);
 
+        /* Cuentas de «Sala y cocina»: se crean aquí, pero el programa va aparte (sala/) */
+        case 'sala_users':
+            require_admin($user);
+            out(['users' => sala_users_list(), 'roles' => SALA_ROLES]);
+        case 'sala_user_save':
+            only_post();
+            require_admin($user);
+            out(sala_user_save($user, $in));
+        case 'sala_user_delete':
+            only_post();
+            require_admin($user);
+            sala_user_delete($user, $id);
+            out(true);
+
         case 'reservations':
             $from = (string)($_GET['from'] ?? today());
             out(list_reservations($from, (string)($_GET['to'] ?? $from)));

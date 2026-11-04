@@ -22,6 +22,7 @@ Documento interno. Rellena los datos de contacto y guárdalo donde lo encuentres
 | Reinstalar encima | `install.php` no hace nada si ya existe `config.php` |
 | Inyección SQL | Todas las consultas usan sentencias preparadas |
 | Archivos subidos | Solo imágenes; se recodifican a JPG y en `uploads/` no se ejecuta código |
+| Sala y cocina | Cuentas y sesiones propias, separadas del panel (una cuenta de sala no entra en el panel ni al revés), con permisos por tipo de cuenta y el mismo bloqueo por fallos. Plano, pedidos, notas, asignaciones de mesa y nombres cifrados; pedidos cerrados borrados a los 30 días. Precios siempre desde la carta del servidor. Límite propio de 1200 peticiones por minuto y por IP (`rate_limit_sala`). Ver [docs/SALA-Y-COCINA.md](docs/SALA-Y-COCINA.md) |
 | Demostrar consentimientos | Tabla `audit_log`: registro, reservas, cambios de contraseña y datos (fecha, IP cifrada, navegador) |
 
 ## Si hay una brecha de seguridad (RGPD art. 33 y 34)

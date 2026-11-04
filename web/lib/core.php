@@ -43,6 +43,7 @@ function purge_old_reservations(bool $force = false): int
     if (!$force && $last > time() - 900) return 0;
     q("DELETE FROM settings WHERE k = '_purge'");
     q("INSERT INTO settings (k, v) VALUES ('_purge', ?)", [(string)time()]);
+    if (function_exists('sala_purge')) sala_purge();
     $cut = time() - PURGE_HOURS * 3600;
     $d = date('Y-m-d', $cut);
     $t = date('H:i', $cut);
@@ -60,7 +61,7 @@ function purge_old_reservations(bool $force = false): int
 }
 
 /** Actualiza la base de datos de instalaciones anteriores sin perder datos. */
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 /** Versión de las condiciones y la privacidad: se guarda con cada aceptación. Súbela si cambias los textos. */
 const LEGAL_VERSION = '2026-10-22';
 function ensure_schema(): void
@@ -157,6 +158,7 @@ function ensure_schema(): void
             try { db()->exec($sql); } catch (Throwable $e) { /* ya existe */ }
         }
     }
+    // v11: Sala y cocina (las tablas sala_* las crea schema_sql)
     q("DELETE FROM settings WHERE k = '_schema'");
     q("INSERT INTO settings (k, v) VALUES ('_schema', ?)", [(string)SCHEMA_VERSION]);
 }
@@ -590,11 +592,11 @@ function throttle_clear(string $key): void
  * Límite general de la API por IP (peticiones por minuto, 'rate_limit' en config.php; 0 lo quita).
  * Usa APCu si el hosting lo tiene y, si no, un archivo pequeño por IP en data/limites.
  */
-function api_rate_limit(): void
+function api_rate_limit(string $bucket = '', ?int $max = null): void
 {
-    $max = (int)(cfg()['rate_limit'] ?? 240);
+    $max ??= (int)(cfg()['rate_limit'] ?? 240);
     if ($max <= 0) return;
-    $key = client_ip();
+    $key = ($bucket !== '' ? $bucket . '-' : '') . client_ip();
     $win = intdiv(time(), 60);
     $n = 0;
     if (function_exists('apcu_inc') && function_exists('apcu_enabled') && apcu_enabled()) {
