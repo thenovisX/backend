@@ -590,6 +590,27 @@ function throttle_clear(string $key): void
 }
 
 /**
+ * Como throttle_check() + throttle_hit(), pero apuntando el intento ANTES de comprobar nada: con muchas
+ * peticiones a la vez, throttle_check() las dejaría pasar todas antes de que se apunte la primera.
+ * Para secretos cortos (el código de 4 cifras de la mesa). Si el intento sale bien, throttle_undo() lo quita.
+ * Devuelve [huella, id del intento apuntado].
+ */
+function throttle_take(string $bucket, int $max, int $seconds, string $msg = 'Demasiados intentos. Espera 15 minutos.'): array
+{
+    $key = hash('sha256', $bucket . '|' . (cfg()['secret'] ?? ''));
+    q('INSERT INTO login_attempts (ip, at) VALUES (?, ?)', [$key, now()]);
+    $id = (int)db()->lastInsertId();
+    $n = (int)q('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND at > ? AND id <= ?', [$key, date('Y-m-d H:i:s', time() - $seconds), $id])->fetchColumn();
+    if ($n > $max) throw new ValidationError($msg);
+    return [$key, $id];
+}
+
+function throttle_undo(array $taken): void
+{
+    q('DELETE FROM login_attempts WHERE id = ?', [$taken[1]]);
+}
+
+/**
  * Límite general de la API por IP (peticiones por minuto, 'rate_limit' en config.php; 0 lo quita).
  * Usa APCu si el hosting lo tiene y, si no, un archivo pequeño por IP en data/limites.
  */

@@ -676,9 +676,35 @@ function sala_order_open(array $u, array $in): array
 }
 
 /** Cambiar personas, nota o mesas (mover el pedido o juntarle otra mesa). */
+/**
+ * Cambia los datos de un pedido (mesas, personas, nota, código, llamada…) sin pisar lo que otro haya cambiado a la vez:
+ * lee, cambia y guarda dentro del bloqueo. $fn recibe el pedido y lo devuelve cambiado.
+ */
+function sala_order_mutate(int $id, callable $fn): array
+{
+    $pdo = db();
+    $own = !$pdo->inTransaction();
+    if ($own) reservation_lock();
+    try {
+        $o = $fn(sala_order_get($id));
+        sala_order_save_data($o['id'], $o);
+        if ($own) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    sala_bump();
+    return $o;
+}
+
 function sala_order_update(array $u, array $in): array
 {
-    $o = sala_order_get((int)($in['id'] ?? 0));
+    $o = sala_order_mutate((int)($in['id'] ?? 0), fn(array $o) => sala_order_apply($o, $in));
+    return sala_order_get($o['id']);
+}
+
+function sala_order_apply(array $o, array $in): array
+{
     if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
     if (isset($in['tables'])) $o['tables'] = sala_check_tables((array)$in['tables'], $o['id']);
     if (isset($in['people'])) $o['people'] = max(0, min(300, (int)$in['people']));
@@ -690,9 +716,7 @@ function sala_order_update(array $u, array $in): array
         if (!empty($in['new_pin'])) $o['pin'] = mesa_new_pin();
         mesa_kick($o['id']); // los móviles que ya estaban dentro tienen que volver a entrar
     }
-    sala_order_save_data($o['id'], $o);
-    sala_bump();
-    return sala_order_get($o['id']);
+    return $o;
 }
 
 /** Pase por defecto según el nombre de la categoría (el camarero lo puede cambiar). */
@@ -743,8 +767,9 @@ function sala_order_add(array $u, array $in, bool $guest = false): array
         $hold = filter_var($l['hold'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $kind = (string)($l['kind'] ?? 'dish');
         if ($kind === 'dish') {
-            $d = q('SELECT * FROM dishes WHERE id = ?', [(int)($l['dish'] ?? 0)])->fetch();
-            if (!$d) throw new ValidationError('Uno de los platos ya no está en la carta');
+            // Solo platos disponibles: uno agotado o quitado de la carta no se puede pedir (tampoco desde el móvil)
+            $d = q('SELECT * FROM dishes WHERE id = ? AND available = 1', [(int)($l['dish'] ?? 0)])->fetch();
+            if (!$d) throw new ValidationError('Uno de los platos ya no está en la carta o se ha agotado');
             $cid = (int)$d['category_id'];
             $rows[] = ['name' => $d['name'], 'price' => (float)$d['price'], 'qty' => $qty, 'note' => $note, 'kind' => 'dish', 'sub' => '',
                 'allergens' => $d['allergens'] === '' ? [] : explode(',', $d['allergens']),
@@ -850,17 +875,18 @@ function sala_order_total(array $o): float
 /** Cerrar la mesa: se guarda el total y la mesa queda libre. */
 function sala_order_close(array $u, int $id): array
 {
-    $o = sala_order_get($id);
-    if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
-    $o['total'] = sala_order_total($o);
-    $o['call'] = null;
-    sala_order_save_data($id, $o);
-    // Lo pedido por QR que nadie aceptó no se cobra
-    q("UPDATE sala_items SET status = 'anulado', updated_at = ? WHERE order_id = ? AND status = 'pendiente'", [now(), $id]);
-    q("UPDATE sala_items SET status = 'servido', updated_at = ? WHERE order_id = ? AND status NOT IN ('anulado', 'servido')", [now(), $id]);
-    mesa_kick($id); // los móviles de la mesa ya no pueden pedir
-    q("UPDATE sala_orders SET status = 'cerrada', closed_at = ? WHERE id = ?", [now(), $id]);
-    sala_bump();
+    // Dentro del bloqueo: un móvil que envía o llama justo al cerrar no se cuela en la cuenta ni la pisa
+    sala_order_mutate($id, function (array $o) use ($id) {
+        if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
+        $o['total'] = sala_order_total($o);
+        $o['call'] = null;
+        // Lo pedido por QR que nadie aceptó no se cobra
+        q("UPDATE sala_items SET status = 'anulado', updated_at = ? WHERE order_id = ? AND status = 'pendiente'", [now(), $id]);
+        q("UPDATE sala_items SET status = 'servido', updated_at = ? WHERE order_id = ? AND status NOT IN ('anulado', 'servido')", [now(), $id]);
+        mesa_kick($id); // los móviles de la mesa ya no pueden pedir
+        q("UPDATE sala_orders SET status = 'cerrada', closed_at = ? WHERE id = ?", [now(), $id]);
+        return $o;
+    });
     return sala_order_get($id);
 }
 

@@ -827,7 +827,8 @@
           <div><p class="help">${q.need_pin ? 'Código de la mesa' : 'No hace falta código (está quitado en Preferencias)'}</p>
             ${q.need_pin ? `<p class="qr-pin">${esc(q.pin)}</p>` : ''}
             <p class="help">Que escaneen este QR con el móvil (ya lleva el código) o el QR pegado en la mesa${q.need_pin ? ' y escriban el código' : ''}.</p>
-            <p class="help">${q.phones ? `${q.phones} móvil(es) conectado(s) a esta mesa.` : 'Aún no hay ningún móvil conectado.'}</p></div>
+            <p class="help">${q.phones ? `${q.phones} móvil(es) conectado(s) a esta mesa.` : 'Aún no hay ningún móvil conectado.'}</p>
+            ${q.need_pin && q.locked ? '<p class="help" style="color:var(--pimenton)">Alguien ha probado demasiados códigos y esta mesa está bloqueada 15 minutos. Pulsa «Cambiar el código» para desbloquearla.</p>' : ''}</div>
         </div>` : ''}
       <label class="switch-row">Se puede pedir desde el móvil en esta mesa <span class="sw"><input type="checkbox" data-qron ${q.qr ? 'checked' : ''}><span></span></span></label>
       ${q.qr && q.need_pin ? '<div class="actions"><button class="btn btn-line" type="button" data-newpin>Cambiar el código</button></div><p class="help">Cambiar el código saca a los móviles que ya estaban dentro (por si alguien lo ha visto desde otra mesa).</p>' : ''}`, (body) => {

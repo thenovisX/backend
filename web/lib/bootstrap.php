@@ -23,3 +23,5 @@ ini_set('display_errors', !empty(cfg()['debug']) ? '1' : '0');
 // Las trazas de los errores van al registro del servidor sin los argumentos de las funciones
 // (si no, una contraseña o un token podrían acabar escritos en el log)
 ini_set('zend.exception_ignore_args', '1');
+// No decir a nadie qué versión de PHP usa el servidor (pistas para buscar fallos conocidos)
+if (PHP_SAPI !== 'cli') header_remove('X-Powered-By');
