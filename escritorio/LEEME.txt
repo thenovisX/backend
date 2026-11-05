@@ -1,0 +1,28 @@
+RESTAURANTE · MESAS Y COCINA (app para Windows)
+===============================================
+
+Esta app pone en marcha en este ordenador el plano de mesas, los pedidos, la pantalla
+de cocina y los pedidos por QR. Los móviles y tablets del MISMO WIFI se conectan a este
+ordenador; no hace falta la web publicada ni internet.
+
+PRIMERA VEZ
+1. Abre «Restaurante · Mesas y cocina». Escribe el nombre del restaurante, un usuario y
+   una contraseña. Ese usuario sirve para el Panel y para Sala y cocina (como encargado).
+2. Pulsa «Ver las direcciones y los QR». En los móviles, escanea el QR de «Sala y pedidos».
+3. Si los móviles no cargan la página: pulsa «Permitir en el firewall» y acepta el aviso.
+
+DÍA A DÍA
+- La app se queda junto al reloj. Mientras esté abierta, todo funciona.
+- Para salir del todo: botón derecho en el icono del reloj → Salir.
+- Marca «Arrancar sola al encender el ordenador» para no tener que abrirla cada día.
+
+QR DE LAS MESAS
+- Llevan la dirección de este ordenador (p. ej. http://192.168.1.20:8080). Si el router
+  le cambia la IP, dejan de funcionar: pide en el router que le reserve siempre la misma
+  IP a este ordenador, o escríbela en «Ajustes» y vuelve a imprimir los QR.
+
+DATOS
+- Se guardan cifrados en la carpeta de la app: web\data (base de datos), web\config.php
+  (la clave de cifrado: sin ella no se pueden leer los datos) y web\uploads (fotos).
+- Copia de seguridad: copia esas tres cosas con la app cerrada.
+- Al desinstalar, los datos se quedan en la carpeta por si vuelves a instalar.

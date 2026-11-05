@@ -11,6 +11,7 @@ Base reutilizable para hacer la web de un restaurante. Para cada cliente solo ha
 - **Carta** con secciones, fotos, precios, platos agotados y los 14 alérgenos con iconos.
 - **App de gestión** para el móvil (Android y web/iPhone): peticiones, reservas de hoy, calendario, carta y ajustes con buscador.
 - **Sala y cocina** (`/sala/`, ver [docs/SALA-Y-COCINA.md](docs/SALA-Y-COCINA.md)): programa aparte para el servicio con plano del local por plantas (forma de la sala, mesas con tamaño y plazas, mesas fusionadas para eventos), pedidos por mesa (carta, menús, especiales y notas para la cocina) y pantalla de cocina en tiempo real. Las reservas reciben mesa solas, juntando mesas si hace falta, según las preferencias del restaurante. Cuentas propias creadas desde el panel; todo cifrado.
+- **App de Windows para el local** (`escritorio/`, ver [escritorio/README.md](escritorio/README.md)): Sala y cocina y los pedidos por QR funcionando en un ordenador del restaurante, para los móviles y tablets del mismo wifi, sin depender de la web publicada. Instalador compilado con `escritorio\build.ps1`.
 - **Usuarios con permisos**: el administrador crea usuarios (por ejemplo, camareros que solo ven las reservas) y decide si pueden gestionar reservas, cambiar la carta o los ajustes.
 - **Horario de cocina** opcional: las reservas se ofrecen solo con la cocina abierta y la web lo muestra bajo el horario.
 - **Emails** desde el hosting o desde Gmail.

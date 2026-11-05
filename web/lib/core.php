@@ -705,7 +705,8 @@ function base_url(): string
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $root = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
-    if (preg_match('#/(api|panel|sala|mesa)$#', $root)) $root = dirname($root);
+    // En Windows dirname('/sala') devuelve «\»: se vuelve a poner con «/»
+    if (preg_match('#/(api|panel|sala|mesa)$#', $root)) $root = str_replace('\\', '/', dirname($root));
     $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
     if (!preg_match('/^[a-z0-9.-]+(:\d+)?$/i', $host)) $host = 'localhost';
     return ($https ? 'https' : 'http') . '://' . $host . rtrim($root, '/');
