@@ -61,3 +61,7 @@ Cuando entra una reserva (por la web o apuntada en el panel), se le busca mesa s
 ## Pruebas
 
 `bash tests/run.sh` crea una base de datos SQLite temporal y prueba el plano, la asignación automática (mesa ajustada, juntar mesas, tiempo de mesa, cancelar, modo «al confirmar»), los pedidos, la cocina, las cuentas y que todo quede cifrado.
+
+## Pedidos por QR
+
+Los clientes pueden pedir desde el móvil escaneando el QR de su mesa: ver [PEDIDOS-QR.md](PEDIDOS-QR.md).

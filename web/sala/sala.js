@@ -26,7 +26,7 @@
   const norm = (t) => String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const ROLE = { encargado: 'Encargado', camarero: 'Camarero', cocina: 'Cocina' };
   const COURSES = { 0: 'Bebidas', 1: 'Entrantes', 2: 'Principales', 3: 'Postres' };
-  const ST = { espera: 'En espera', nuevo: 'En cocina', preparando: 'Preparando', listo: 'Listo', servido: 'Servido', anulado: 'Anulado' };
+  const ST = { pendiente: 'Por aceptar (QR)', espera: 'En espera', nuevo: 'En cocina', preparando: 'Preparando', listo: 'Listo', servido: 'Servido', anulado: 'Anulado' };
   const NOTE_CHIPS = ['Sin gluten', 'Sin lactosa', 'Alergia', 'Sin sal', 'Poco hecho', 'Al punto', 'Muy hecho', 'Para compartir', 'Sin cebolla', 'Para niño'];
   const API = new URL('api.php', location.href).href;
   const PANEL = new URL('../panel/', location.href).href;
@@ -255,7 +255,7 @@
     if (t.kind !== 'mesa') return 'deco';
     const today = S.date === iso(clock());
     const o = today ? orderOf(t.id) : null;
-    if (o) return o.items.some((i) => i.status === 'listo') ? 'ocupada aviso' : 'ocupada';
+    if (o) return o.call || o.items.some((i) => i.status === 'listo' || i.status === 'pendiente') ? 'ocupada aviso' : 'ocupada';
     const r = resFor(t.id, false);
     if (r) return 'reservada';
     if (resFor(t.id, true)) return 'proxima';
@@ -265,10 +265,18 @@
   function noticeReady() {
     if (!S.st) return;
     const now = new Set();
-    S.st.orders.forEach((o) => o.items.forEach((i) => { if (i.status === 'listo') now.add(i.id); }));
+    S.st.orders.forEach((o) => {
+      o.items.forEach((i) => { if (i.status === 'listo') now.add(i.id); if (i.status === 'pendiente') now.add('p' + i.id); });
+      if (o.call) now.add(`c${o.id}|${o.call.at}`);
+    });
     if (S.readySeen) {
-      const fresh = S.st.orders.filter((o) => o.items.some((i) => i.status === 'listo' && !S.readySeen.has(i.id)));
-      if (fresh.length) { fresh.forEach((o) => toast(`${tLabel(o.tables)}: listo para servir`, 'ok')); beep(2); }
+      let ring = false;
+      S.st.orders.forEach((o) => {
+        if (o.items.some((i) => i.status === 'listo' && !S.readySeen.has(i.id))) { toast(`${tLabel(o.tables)}: listo para servir`, 'ok'); ring = true; }
+        if (o.items.some((i) => i.status === 'pendiente' && !S.readySeen.has('p' + i.id))) { toast(`${tLabel(o.tables)}: pedido desde el móvil por aceptar`); ring = true; }
+        if (o.call && !S.readySeen.has(`c${o.id}|${o.call.at}`)) { toast(`${tLabel(o.tables)}: ${o.call.type === 'cuenta' ? 'piden la cuenta' : 'llaman al camarero'}`); ring = true; }
+      });
+      if (ring) beep(2);
     }
     S.readySeen = now;
   }
@@ -366,7 +374,7 @@
           ${today ? '<button class="btn btn-quiet btn-sm" type="button" data-closed>Cobradas hoy</button>' : ''}
         </div>
         <div class="map-wrap view" id="map"></div>
-        <div class="legend"><span><i class="lg-libre"></i>Libre</span><span><i class="lg-prox"></i>Reserva en menos de 1 h</span><span><i class="lg-res"></i>Reservada</span><span><i class="lg-ocu"></i>Ocupada</span><span><i class="lg-av"></i>Plato listo para servir</span></div>
+        <div class="legend"><span><i class="lg-libre"></i>Libre</span><span><i class="lg-prox"></i>Reserva en menos de 1 h</span><span><i class="lg-res"></i>Reservada</span><span><i class="lg-ocu"></i>Ocupada</span><span><i class="lg-av"></i>Plato listo, llaman o pedido por QR</span></div>
       </section>
       <aside class="card side">
         <h2>Reservas ${today ? 'de hoy' : 'del ' + S.date.split('-').reverse().join('/')} <small>${S.st.reservations.length}</small></h2>
@@ -395,6 +403,8 @@
     const sub = (t) => {
       if (t.kind !== 'mesa') return '';
       const o = today ? orderOf(t.id) : null;
+      if (o && o.call) return o.call.type === 'cuenta' ? 'Pide la cuenta' : 'Llama';
+      if (o && o.items.some((i) => i.status === 'pendiente')) return 'Pedido QR';
       if (o) return `${o.people || ''}${o.people ? ' pers · ' : ''}${Math.max(0, Math.round((clock().getTime() - new Date(o.opened_at.replace(' ', 'T')).getTime()) / 60000))} min`;
       const r = resFor(t.id, true);
       if (r) return `${r.time} · ${r.people}p`;
@@ -546,6 +556,7 @@
         <h1>${esc(tLabel(order.tables))}</h1>
         <span class="meta">${order.people ? order.people + ' pers. · ' : ''}abierta a las ${esc(order.opened_at.slice(11, 16))} por ${esc(order.by)}${order.note ? ' · ' + esc(order.note) : ''}</span>
         <span class="grow"></span>
+        <button class="btn btn-quiet btn-sm" type="button" data-qr>${order.qr ? `QR · código ${esc(order.pin)}` : 'QR apagado'}</button>
         <button class="btn btn-quiet btn-sm" type="button" data-edit>Personas, nota y mesas</button>
       </div>
       <div class="ped">
@@ -558,6 +569,7 @@
       </div>`;
     $('[data-back]').addEventListener('click', () => go('sala'));
     $('[data-edit]').addEventListener('click', editOrder);
+    $('[data-qr]').addEventListener('click', qrSheet);
     $('#q').addEventListener('input', (e) => { S.q = e.target.value; paintDishes(); });
     paintDishes();
     paintComanda();
@@ -690,8 +702,12 @@
     const holdCourses = [...new Set(items.filter((i) => i.status === 'espera').map((i) => i.course))].sort();
     const byCourse = {};
     items.forEach((i) => { (byCourse[i.course] = byCourse[i.course] || []).push(i); });
-    const total = items.filter((i) => i.status !== 'anulado').reduce((a, i) => a + i.price * i.qty, 0) + d.reduce((a, l) => a + l.price * l.qty, 0);
+    const total = items.filter((i) => i.status !== 'anulado' && i.status !== 'pendiente').reduce((a, i) => a + i.price * i.qty, 0) + d.reduce((a, l) => a + l.price * l.qty, 0);
+    const pend = items.filter((i) => i.status === 'pendiente');
     box.innerHTML = `
+      ${order.call ? `<div class="qr-alert"><b>${order.call.type === 'cuenta' ? 'Piden la cuenta' : 'Llaman al camarero'}</b><span>desde el móvil, a las ${esc(order.call.at.slice(11, 16))}</span><button class="btn btn-ok btn-sm" type="button" data-calldone>Atendido</button></div>` : ''}
+      ${pend.length ? `<div class="qr-alert"><b>Pedido desde el móvil: ${pend.reduce((a, i) => a + i.qty, 0)} plato(s) por aceptar</b><span>${pend.map((i) => `${i.qty}× ${esc(i.name)}`).join(', ')}</span>
+        <span class="row"><button class="btn btn-ok btn-sm" type="button" data-pend="ok">Aceptar y enviar a cocina</button><button class="btn btn-danger btn-sm" type="button" data-pend="no">Rechazar</button></span></div>` : ''}
       <h2>Por enviar</h2>
       ${d.length ? `<div class="lines">${d.map((l) => `<button type="button" class="line draft" data-dl="${l.key}">
           <span class="q">${l.qty}×</span><span><p>${esc(l.name)}</p>${l.detail ? `<small>${esc(l.detail)}</small>` : ''}<small>${esc(COURSES[l.course])}${l.hold ? ' · en espera' : ''}</small>${l.note ? `<small class="nota">${esc(l.note)}</small>` : ''}</span><span>${euro(l.price * l.qty)}</span></button>`).join('')}</div>
@@ -700,7 +716,7 @@
       <h2 style="margin-top:14px">Enviado</h2>
       ${items.length ? Object.keys(byCourse).sort().map((c) => `<div class="course-h"><span>${esc(COURSES[c])}</span>${holdCourses.includes(Number(c)) ? `<button class="btn btn-warn btn-sm" type="button" data-fire="${c}">Marchar ${esc(COURSES[c].toLowerCase())}</button>` : ''}</div>
         <div class="lines">${byCourse[c].map((i) => `<button type="button" class="line ln-${i.status}" data-it="${i.id}">
-          <span class="q">${i.qty}×</span><span><p>${esc(i.name)}</p>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${i.note ? `<small class="nota">${esc(i.note)}</small>` : ''}</span>
+          <span class="q">${i.qty}×</span><span><p>${esc(i.name)}${i.qr ? ' <span class="tag-qr" title="Pedido desde el móvil">QR</span>' : ''}</p>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${i.note ? `<small class="nota">${esc(i.note)}</small>` : ''}</span>
           <span><span class="st st-${i.status}">${ST[i.status]}</span><small>${euro(i.price * i.qty)}</small></span></button>`).join('')}</div>`).join('') : '<p class="help">Aún no se ha enviado nada.</p>'}
       <div class="total"><span>Total</span><span>${euro(total)}</span></div>
       <div class="actions">${holdCourses.length > 1 ? '<button class="btn btn-warn" type="button" data-fire="-1">Marchar todo</button>' : ''}<button class="btn btn-ok" type="button" data-close>Cuenta y cerrar mesa</button></div>`;
@@ -730,6 +746,28 @@
     }));
     $$('[data-it]', box).forEach((b) => b.addEventListener('click', () => itemSheet(items.find((i) => i.id === Number(b.dataset.it)))));
     $('[data-close]', box).addEventListener('click', closeOrder);
+    const cd = $('[data-calldone]', box);
+    if (cd) cd.addEventListener('click', async () => {
+      busy(cd, true, '…');
+      try { order = await api('order_update', { body: { id: order.id, call_done: true } }); S.rev = ''; paintComanda(); }
+      catch (err) { busy(cd, false); toast(err.message, 'err'); }
+    });
+    $$('[data-pend]', box).forEach((b) => b.addEventListener('click', async () => {
+      const ok = b.dataset.pend === 'ok';
+      if (!ok && !confirm('¿Rechazar lo que han pedido desde el móvil? No llega a la cocina ni se cobra.')) return;
+      busy(b, true, '…');
+      try {
+        // Al aceptar, los postres quedan en espera como siempre; el resto va a la cocina
+        const later = pend.filter((i) => ok && i.course === 3).map((i) => i.id);
+        const now = pend.filter((i) => !later.includes(i.id)).map((i) => i.id);
+        if (now.length) await api('item_status', { body: { ids: now, status: ok ? 'nuevo' : 'anulado' } });
+        if (later.length) await api('item_status', { body: { ids: later, status: 'espera' } });
+        order = await api('order', { query: `&id=${order.id}` });
+        S.rev = '';
+        toast(ok ? 'Aceptado: la cocina ya lo tiene' : 'Pedido rechazado', ok ? 'ok' : '');
+        paintComanda();
+      } catch (err) { busy(b, false); toast(err.message, 'err'); }
+    }));
   }
   function itemSheet(i) {
     if (!i) return;
@@ -738,12 +776,13 @@
       <dl class="detail"><dt>Estado</dt><dd><span class="st st-${i.status}">${ST[i.status]}</span></dd><dt>Pase</dt><dd>${esc(COURSES[i.course])}</dd>
         ${i.note ? `<dt>Nota</dt><dd>${esc(i.note)}</dd>` : ''}<dt>Enviado</dt><dd>${esc(i.sent_at.slice(11, 16))} por ${esc(i.by)}</dd><dt>Importe</dt><dd>${euro(i.price * i.qty)}</dd></dl>
       <div class="actions">
+        ${i.status === 'pendiente' ? `${btn(i.course === 3 ? 'espera' : 'nuevo', 'Aceptar', 'btn-ok')}${btn('anulado', 'Rechazar', 'btn-danger')}` : `
         ${i.status === 'espera' ? btn('nuevo', 'Marchar ya', 'btn-warn') : ''}
         ${i.status !== 'anulado' ? btn('servido', 'Servido', 'btn-ok') : ''}
-        ${i.status === 'anulado' ? btn('nuevo', 'Recuperar') : btn('anulado', 'Anular (no se cobra)', 'btn-danger')}
+        ${i.status === 'anulado' ? btn('nuevo', 'Recuperar') : btn('anulado', 'Anular (no se cobra)', 'btn-danger')}`}
       </div>`, (body) => {
       $$('[data-s]', body).forEach((b) => b.addEventListener('click', async () => {
-        if (b.dataset.s === 'anulado' && !confirm('¿Anular este plato? Desaparece de la cocina y no se cobra.')) return;
+        if (b.dataset.s === 'anulado' && i.status !== 'pendiente' && !confirm('¿Anular este plato? Desaparece de la cocina y no se cobra.')) return;
         busy(b, true, '…');
         try { await api('item_status', { body: { id: i.id, status: b.dataset.s } }); order = await api('order', { query: `&id=${order.id}` }); closeSheet(); paintComanda(); }
         catch (err) { busy(b, false); toast(err.message, 'err'); }
@@ -776,9 +815,38 @@
       });
     });
   }
+  /** QR de la mesa para pedir desde el móvil: el código, el QR con el código dentro y los ajustes de esta mesa. */
+  async function qrSheet() {
+    let q;
+    try { q = await api('order_qr', { query: `&id=${order.id}` }); } catch (err) { return toast(err.message, 'err'); }
+    const off = !q.enabled;
+    openSheet(`Pedir desde el móvil · ${tLabel(order.tables)}`, `
+      ${off ? '<p class="help" style="color:var(--pimenton)">Los pedidos por QR están apagados en todo el local (Preferencias).</p>' : ''}
+      ${q.qr && !off ? `<div class="qr-show">
+          <div class="qr-img">${q.svg}</div>
+          <div><p class="help">${q.need_pin ? 'Código de la mesa' : 'No hace falta código (está quitado en Preferencias)'}</p>
+            ${q.need_pin ? `<p class="qr-pin">${esc(q.pin)}</p>` : ''}
+            <p class="help">Que escaneen este QR con el móvil (ya lleva el código) o el QR pegado en la mesa${q.need_pin ? ' y escriban el código' : ''}.</p>
+            <p class="help">${q.phones ? `${q.phones} móvil(es) conectado(s) a esta mesa.` : 'Aún no hay ningún móvil conectado.'}</p></div>
+        </div>` : ''}
+      <label class="switch-row">Se puede pedir desde el móvil en esta mesa <span class="sw"><input type="checkbox" data-qron ${q.qr ? 'checked' : ''}><span></span></span></label>
+      ${q.qr && q.need_pin ? '<div class="actions"><button class="btn btn-line" type="button" data-newpin>Cambiar el código</button></div><p class="help">Cambiar el código saca a los móviles que ya estaban dentro (por si alguien lo ha visto desde otra mesa).</p>' : ''}`, (body) => {
+      $('[data-qron]', body).addEventListener('change', async (e) => {
+        try { order = await api('order_update', { body: { id: order.id, qr: e.target.checked } }); S.rev = ''; paintPedido(); qrSheet(); }
+        catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
+      });
+      const np = $('[data-newpin]', body);
+      if (np) np.addEventListener('click', async () => {
+        if (!confirm('¿Cambiar el código? Los móviles que ya estaban dentro tendrán que escribir el nuevo.')) return;
+        busy(np, true, '…');
+        try { order = await api('order_update', { body: { id: order.id, new_pin: true } }); paintPedido(); qrSheet(); }
+        catch (err) { busy(np, false); toast(err.message, 'err'); }
+      });
+    });
+  }
   function billRows(items) {
     const m = new Map();
-    items.filter((i) => i.status !== 'anulado').forEach((i) => {
+    items.filter((i) => i.status !== 'anulado' && i.status !== 'pendiente').forEach((i) => {
       const k = i.kind === 'menu' ? i.sub.split(' · ')[0] + '|menu|' + i.batch : i.name + '|' + i.price;
       const r = m.get(k) || { name: i.kind === 'menu' ? i.sub.split(' · ')[0] : i.name, qty: 0, amount: 0, menu: i.kind === 'menu' };
       if (i.kind === 'menu') { r.amount += i.price * i.qty; r.qty = Math.max(r.qty, i.qty); } else { r.qty += i.qty; r.amount += i.price * i.qty; }
@@ -790,7 +858,7 @@
     const d = draft();
     const rows = billRows(order.items);
     const total = rows.reduce((a, r) => a + r.amount, 0);
-    const cooking = order.items.filter((i) => ['espera', 'nuevo', 'preparando'].includes(i.status)).length;
+    const cooking = order.items.filter((i) => ['espera', 'nuevo', 'preparando', 'pendiente'].includes(i.status)).length;
     openSheet(`Cuenta · ${tLabel(order.tables)}`, `
       <table class="bill">${rows.map((r) => `<tr><td>${r.qty}× ${esc(r.name)}</td><td>${euro(r.amount)}</td></tr>`).join('')}</table>
       <div class="total"><span>Total</span><span>${euro(total)}</span></div>
@@ -1546,6 +1614,23 @@
           <button class="btn btn-quiet btn-sm" type="button" data-addsp>+ Añadir especial</button>
           <button class="btn btn-main" type="submit">Guardar especiales</button>
         </form>
+      </section>
+      <section class="card">
+        <form class="form" id="qrf" novalidate>
+          <h2 style="margin:0">Pedidos desde el móvil (QR)</h2>
+          <p class="help">Cada mesa tiene su QR. Los clientes lo escanean, ven la carta y piden; el pedido llega a la mesa en la sala y a la cocina, marcado con «QR».</p>
+          <label class="switch-row">Se puede pedir desde el móvil <span class="sw"><input type="checkbox" name="qr" ${p.qr ? 'checked' : ''}><span></span></span></label>
+          <label class="switch-row"><span>Pedir el código de la mesa <span class="help" style="display:block">Recomendado. Es un número de 4 cifras nuevo cada vez que se abre la mesa; lo ve el camarero en el pedido. Sin él, alguien con una foto del QR podría pedir desde fuera.</span></span> <span class="sw"><input type="checkbox" name="qr_pin" ${p.qr_pin ? 'checked' : ''}><span></span></span></label>
+          <label class="switch-row"><span>El camarero acepta cada pedido antes de que llegue a la cocina <span class="help" style="display:block">Si está apagado, va directo a la cocina (los postres quedan en espera, como siempre).</span></span> <span class="sw"><input type="checkbox" name="qr_confirm" ${p.qr_confirm ? 'checked' : ''}><span></span></span></label>
+          <label>Solo desde el wifi del local (opcional)
+            <textarea class="inp" name="qr_ips" rows="2" placeholder="Una IP o red por línea, p. ej. 81.40.12.7 o 81.40.12.0/24">${esc(p.qr_ips.join('\n'))}</textarea>
+            <span class="help">Vacío = desde cualquier conexión (también datos móviles). Si la rellenas, solo se puede pedir conectado al wifi del restaurante. Ojo: si tu compañía te cambia la IP, habrá que actualizarla.</span></label>
+          <div class="row"><button class="btn btn-quiet btn-sm" type="button" data-myip>Añadir la IP de esta conexión</button></div>
+          <button class="btn btn-main" type="submit">Guardar</button>
+          <h2 style="margin:10px 0 0">QR de las mesas</h2>
+          <div class="row"><button class="btn btn-line" type="button" data-qrprint>Ver e imprimir los QR</button><button class="btn btn-danger" type="button" data-qrrot>Cambiar todos los QR</button></div>
+          <p class="help">Cambiar los QR invalida los que ya están impresos (por ejemplo, si alguien se ha llevado uno). Habrá que imprimirlos y ponerlos de nuevo.</p>
+        </form>
       </section></div>`;
     const pf = $('#pf');
     $$('[data-up]', pf).forEach((b) => b.addEventListener('click', () => { const row = b.closest('[data-fl]'); if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); }));
@@ -1565,6 +1650,7 @@
       } catch (err) { toast(err.message, 'err'); }
       busy(b, false);
     });
+    wireQrPrefs();
     const spf = $('#spf');
     $('[data-addsp]', spf).addEventListener('click', () => { $('#sp-rows').insertAdjacentHTML('beforeend', specRow({ name: '', price: '', course: 2 })); wireSpec(); });
     const wireSpec = () => $$('[data-delsp]', spf).forEach((b) => { b.onclick = () => b.closest('.spec').remove(); });
@@ -1577,6 +1663,59 @@
       try { await api('prefs_save', { body: { specials } }); S.carta = null; toast('Especiales guardados', 'ok'); }
       catch (err) { toast(err.message, 'err'); }
       busy(b, false);
+    });
+  }
+  function wireQrPrefs() {
+    const f = $('#qrf');
+    if (!f) return;
+    const ipList = () => f.qr_ips.value.split(/[\s,;]+/).filter(Boolean);
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const b = $('button[type=submit]', f);
+      busy(b, true, 'Guardando…');
+      try {
+        await api('prefs_save', { body: { qr: f.qr.checked, qr_pin: f.qr_pin.checked, qr_confirm: f.qr_confirm.checked, qr_ips: ipList() } });
+        toast('Guardado', 'ok');
+      } catch (err) { toast(err.message, 'err'); }
+      busy(b, false);
+    });
+    $('[data-myip]', f).addEventListener('click', async () => {
+      try {
+        const { ip } = await api('my_ip');
+        const list = ipList();
+        if (!list.includes(ip)) list.push(ip);
+        f.qr_ips.value = list.join('\n');
+        toast(`Añadida ${ip}. Pulsa «Guardar».`);
+      } catch (err) { toast(err.message, 'err'); }
+    });
+    $('[data-qrprint]', f).addEventListener('click', async () => { try { qrPrintSheet(await api('qr_list')); } catch (err) { toast(err.message, 'err'); } });
+    $('[data-qrrot]', f).addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      if (!confirm('¿Cambiar los QR de TODAS las mesas? Los que están impresos dejarán de funcionar.')) return;
+      busy(b, true, '…');
+      try { qrPrintSheet(await api('qr_rotate', { body: {} })); toast('QR cambiados. Imprime los nuevos.', 'ok'); } catch (err) { toast(err.message, 'err'); }
+      busy(b, false);
+    });
+  }
+  /** Los QR de todas las mesas, para imprimirlos (uno por mesa, con su nombre). */
+  function qrPrintSheet(d) {
+    openSheet('QR de las mesas', `
+      <p class="help">Imprímelos y pega cada uno en su mesa. Cada QR solo sirve para su mesa y solo deja pedir cuando la mesa está abierta.</p>
+      <div class="actions"><button class="btn btn-main" type="button" data-print>Imprimir</button></div>
+      <div class="qr-grid">${d.tables.map((t) => `<div class="qr-card"><div class="qr-img">${t.svg}</div><b>Mesa ${esc(t.name)}</b><small>${esc(t.floor)}</small>
+        <button class="btn btn-quiet btn-sm" type="button" data-rot="${esc(t.id)}">Cambiar este QR</button></div>`).join('')}</div>`, (body) => {
+      $('[data-print]', body).addEventListener('click', () => {
+        $('#print').innerHTML = `<div class="qr-sheet">${d.tables.map((t) => `<div class="qr-card"><p>${esc(d.restaurant)}</p><div class="qr-img">${t.svg}</div><b>Mesa ${esc(t.name)}</b><small>Escanea para ver la carta y pedir</small></div>`).join('')}</div>`;
+        document.body.classList.add('print-qr');
+        window.print();
+        setTimeout(() => document.body.classList.remove('print-qr'), 500);
+      });
+      $$('[data-rot]', body).forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('¿Cambiar el QR de esta mesa? El que está impreso dejará de funcionar.')) return;
+        busy(b, true, '…');
+        try { qrPrintSheet(await api('qr_rotate', { body: { table: b.dataset.rot } })); toast('QR cambiado. Imprime el nuevo.', 'ok'); }
+        catch (err) { busy(b, false); toast(err.message, 'err'); }
+      }));
     });
   }
   function specRow(s) {
