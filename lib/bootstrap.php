@@ -13,6 +13,7 @@ require __DIR__ . '/recuperar.php';
 require __DIR__ . '/borrado.php';
 require __DIR__ . '/traductor.php';
 require __DIR__ . '/sala.php';
+require __DIR__ . '/mesa.php';
 // Configuración del tema (solo constantes: nombre, colores, huecos de foto) y fotos
 require dirname(__DIR__) . '/tema/tema.php';
 require __DIR__ . '/fotos.php';

@@ -61,7 +61,7 @@ function purge_old_reservations(bool $force = false): int
 }
 
 /** Actualiza la base de datos de instalaciones anteriores sin perder datos. */
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 /** Versión de las condiciones y la privacidad: se guarda con cada aceptación. Súbela si cambias los textos. */
 const LEGAL_VERSION = '2026-10-22';
 function ensure_schema(): void
@@ -159,6 +159,7 @@ function ensure_schema(): void
         }
     }
     // v11: Sala y cocina (las tablas sala_* las crea schema_sql)
+    // v12: pedidos por QR desde la mesa (la tabla sala_guests la crea schema_sql)
     q("DELETE FROM settings WHERE k = '_schema'");
     q("INSERT INTO settings (k, v) VALUES ('_schema', ?)", [(string)SCHEMA_VERSION]);
 }
@@ -704,7 +705,7 @@ function base_url(): string
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $root = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
-    if (preg_match('#/(api|panel)$#', $root)) $root = dirname($root);
+    if (preg_match('#/(api|panel|sala|mesa)$#', $root)) $root = dirname($root);
     $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
     if (!preg_match('/^[a-z0-9.-]+(:\d+)?$/i', $host)) $host = 'localhost';
     return ($https ? 'https' : 'http') . '://' . $host . rtrim($root, '/');

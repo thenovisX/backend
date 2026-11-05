@@ -78,6 +78,9 @@ try {
             only_post();
             sala_require($u, ...$sala);
             out(sala_order_reopen($u, $id));
+        case 'order_qr':
+            sala_require($u, ...$sala);
+            out(mesa_order_qr($id));
         case 'closed_today':
             sala_require($u, ...$sala);
             out(['orders' => sala_orders_closed_today()]);
@@ -117,6 +120,18 @@ try {
             only_post();
             sala_require($u, 'encargado');
             out(['prefs' => sala_prefs_save($in)]);
+        case 'my_ip':
+            sala_require($u, 'encargado');
+            out(['ip' => mesa_remote_ip()]);
+        case 'qr_list':
+            sala_require($u, 'encargado');
+            out(['tables' => mesa_qr_list(), 'restaurant' => settings()['name']]);
+        case 'qr_rotate':
+            only_post();
+            sala_require($u, 'encargado');
+            $tid = (string)($in['table'] ?? '');
+            mesa_rotate($tid === '' ? null : $tid);
+            out(['tables' => mesa_qr_list(), 'restaurant' => settings()['name']]);
     }
     fail('Ruta desconocida', 404);
 } catch (ValidationError $e) {

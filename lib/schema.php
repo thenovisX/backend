@@ -42,6 +42,9 @@ function schema_sql(bool $sqlite): array
         "CREATE TABLE IF NOT EXISTS sala_items (id $ai, order_id INT NOT NULL, batch INT NOT NULL DEFAULT 1, status VARCHAR(12) NOT NULL DEFAULT 'nuevo',
             dest VARCHAR(10) NOT NULL DEFAULT 'cocina', course INT NOT NULL DEFAULT 2, data TEXT NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)$tail",
         "CREATE TABLE IF NOT EXISTS sala_assign (reservation_id INT PRIMARY KEY, rdate DATE NOT NULL, data TEXT NOT NULL, updated_at DATETIME NOT NULL)$tail",
+        // Pedidos por QR (lib/mesa.php): sesiones de los móviles de los clientes, atadas a un pedido abierto
+        "CREATE TABLE IF NOT EXISTS sala_guests (token CHAR(64) PRIMARY KEY, order_id INT NOT NULL, table_id VARCHAR(20) NOT NULL, created_at DATETIME NOT NULL, last_used DATETIME NOT NULL)$tail",
+        'CREATE INDEX idx_sala_guests_order ON sala_guests (order_id)',
         'CREATE INDEX idx_sala_items_order ON sala_items (order_id)',
         'CREATE INDEX idx_sala_items_status ON sala_items (status)',
         'CREATE INDEX idx_sala_orders_status ON sala_orders (status)',
