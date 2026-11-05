@@ -56,6 +56,7 @@
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
     phone: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+    sala: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><circle cx="6.5" cy="17.5" r="3.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
     plate: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/></svg>',
   };
 
@@ -388,6 +389,7 @@
     $('#app').innerHTML = `
       <header class="bar">
         <div><p class="bar-sub" id="bar-sub">${esc(S.restaurant)}</p><h1 id="title"></h1></div>
+        <a class="icon-btn" id="sala-link" href="${esc(S.base)}/sala/" target="_blank" rel="noopener" aria-label="Abrir Sala y cocina (mesas, pedidos y pantalla de cocina)" title="Sala y cocina">${ICON.sala}</a>
         <button class="icon-btn" id="refresh" type="button" aria-label="Actualizar">${ICON.refresh}</button>
       </header>
       <main id="view"></main>
@@ -512,7 +514,7 @@
       <div class="res-time">${showDate ? `<small>${esc(fmtShort(r.date))}</small>` : ''}<b>${esc(r.time)}</b>${endTime(r) && ACTIVE.includes(r.status) ? `<small class="res-end" title="Mesa ocupada hasta las ${endTime(r)}">hasta ${endTime(r)}</small>` : ''}</div>
       <div class="res-main">
         <p class="res-name">${esc(r.name)}</p>
-        <p class="res-meta"><span>${r.people} ${r.people === 1 ? 'persona' : 'personas'}</span><span class="chip chip-${r.status}">${STATUS[r.status]}</span>${r.source === 'panel' ? '<span class="by-hand">a mano</span>' : ''}${r.customer ? '<span class="by-hand">con cuenta</span>' : ''}</p>
+        <p class="res-meta"><span>${r.people} ${r.people === 1 ? 'persona' : 'personas'}</span><span class="chip chip-${r.status}">${STATUS[r.status]}</span>${r.source === 'panel' ? '<span class="by-hand">a mano</span>' : ''}${r.customer ? '<span class="by-hand">con cuenta</span>' : ''}${r.mesa && ACTIVE.includes(r.status) ? `<span class="by-hand">Mesa ${esc(r.mesa)}</span>` : ''}</p>
         ${r.notes ? `<p class="res-notes">${esc(r.notes)}</p>` : ''}
         ${actions.length ? `<div class="res-actions">${actions.join('')}</div>` : ''}
       </div></article>`;
@@ -710,6 +712,7 @@
         <dt>Día</dt><dd>${esc(fmtDay(r.date))}</dd>
         <dt>Hora</dt><dd>${esc(r.time)}${endTime(r) ? ` · mesa ocupada hasta las ${endTime(r)}` : ''}</dd>
         <dt>Personas</dt><dd>${r.people}</dd>
+        ${r.mesa ? `<dt>Mesa</dt><dd>${esc(r.mesa)} <span class="help">(en Sala y cocina)</span></dd>` : ''}
         <dt>Estado</dt><dd><span class="chip chip-${r.status}">${STATUS[r.status]}</span></dd>
         ${r.lang && r.lang !== 'es' ? `<dt>Idioma</dt><dd>${{ en: 'Inglés', pt: 'Portugués', gl: 'Gallego' }[r.lang] || r.lang} <span class="help">(el WhatsApp y los emails le llegan en su idioma)</span></dd>` : ''}
         ${r.phone ? `<dt>Teléfono</dt><dd>${esc(r.phone)}</dd>` : '<dt>Datos</dt><dd>Borrados (pasaron 24 h)</dd>'}
@@ -1477,6 +1480,11 @@
         <p class="help">Todos los usuarios pueden ver las reservas y la carta. Tú decides quién puede cambiar cada cosa.</p>
         <div id="users-box"><p class="help">Cargando…</p></div>
         <button class="btn btn-line btn-sm" type="button" data-user-new>Nuevo usuario</button>`) : ''}
+      ${isAdmin() ? sec('sala', 'Sala y cocina', 'Mesas, pedidos y pantalla de cocina: cuentas para entrar', `
+        <p class="help">«Sala y cocina» es un programa aparte para el servicio: el plano del local con sus mesas, los pedidos de cada mesa y la pantalla de la cocina. Se entra con una cuenta propia que creas aquí (no sirven los usuarios del panel). Ábrelo en la tablet de la cocina y en los móviles de los camareros.</p>
+        <a class="btn btn-main btn-sm" href="${esc(S.base)}/sala/" target="_blank" rel="noopener">Abrir Sala y cocina</a>
+        <div id="sala-box"><p class="help">Cargando…</p></div>
+        <button class="btn btn-line btn-sm" type="button" data-sala-new>Nueva cuenta de sala</button>`) : ''}
       ${isAdmin() ? sec('clientes', 'Clientes con cuenta', 'Cuentas creadas en la web y peticiones para borrar datos', `
         <div id="cus-box"><p class="help">Cargando…</p></div>`) : ''}
       ${sec('avisos', 'Avisos de reservas', 'Nuevas, confirmadas y canceladas, en este móvil', `
@@ -1506,7 +1514,7 @@
       ['horarios', 'Horarios', 'Horarios', 'Cuándo abres y cuándo funciona la cocina.', horarios],
       ['reservas', 'Reservas', 'Reglas de reservas', 'Cómo y cuándo pueden reservar tus clientes por internet.', reservas],
       ['tecnica', 'Técnico', 'Configuración técnica', 'Idiomas de la web y, en «Avanzado», el correo, el WhatsApp automático, el traductor y Google.', tecnica],
-      ['cuenta', 'Cuenta', 'Tu cuenta y tu equipo', 'Usuarios, avisos en el móvil, contraseña y sesión.', cuenta],
+      ['cuenta', 'Cuenta', 'Tu cuenta y tu equipo', 'Usuarios, cuentas de Sala y cocina, avisos en el móvil, contraseña y sesión.', cuenta],
     ].filter((p) => p[4].trim());
     if (!panes.some((p) => p[0] === S.setTab)) S.setTab = panes[0][0];
 
@@ -1570,6 +1578,9 @@
     }));
     $$('form[data-form]', view).forEach((f) => f.addEventListener('submit', (e) => saveSettingsForm(e, f)));
     if ($('#users-box', view)) loadUsers();
+    if ($('#sala-box', view)) loadSalaUsers();
+    const salaNew = $('[data-sala-new]', view);
+    if (salaNew) salaNew.addEventListener('click', () => editSalaUser(null));
     if ($('#cus-box', view)) loadCustomers();
     if ($('#tr-status', view)) loadTrStatus();
     const trRun = $('[data-tr-run]', view);
@@ -1725,6 +1736,65 @@
       $('[data-cus-del]', body).addEventListener('click', async () => {
         if (!confirm(`¿Borrar la cuenta de ${c.name}? No se puede deshacer.`)) return;
         try { await api('customer_delete', { body: { id: c.id } }); closeSheet(); toast('Cuenta borrada'); loadCustomers(); }
+        catch (err) { toast(err.message, 'err'); }
+      });
+    });
+  }
+
+  /* ---------- Cuentas de Sala y cocina (solo administradores) ---------- */
+  async function loadSalaUsers() {
+    const box = $('#sala-box');
+    try {
+      const d = await api('sala_users');
+      S.salaUsers = d.users;
+      S.salaRoles = d.roles;
+      const names = { encargado: 'Encargado', camarero: 'Camarero', cocina: 'Cocina' };
+      box.innerHTML = d.users.length ? d.users.map((u) => `<button type="button" class="user-row${u.active ? '' : ' off'}" data-sala-user="${u.id}">
+          <span class="user-main"><b>${esc(u.name || u.username)}</b><small>${esc(u.username)}${u.active ? '' : ' · desactivada'}</small></span>
+          <span class="user-tags"><i class="tag${u.role === 'encargado' ? ' tag-admin' : ''}">${names[u.role] || u.role}</i></span>
+        </button>`).join('') : '<p class="help">Todavía no hay cuentas. Crea al menos una de encargado para dibujar el plano.</p>';
+      $$('[data-sala-user]', box).forEach((b) => b.addEventListener('click', () => editSalaUser(S.salaUsers.find((u) => u.id === Number(b.dataset.salaUser)))));
+    } catch (err) { box.innerHTML = `<p class="err-box">${esc(err.message)}</p>`; }
+  }
+
+  function editSalaUser(u) {
+    const isNew = !u;
+    u = u || { username: '', name: '', role: 'camarero', active: true };
+    const roles = S.salaRoles || { encargado: 'Encargado', camarero: 'Camarero', cocina: 'Cocina' };
+    openSheet(isNew ? 'Nueva cuenta de sala' : 'Editar cuenta de sala', `
+      <form class="form" id="sala-edit" novalidate>
+        <div class="row">
+          <label>Usuario <input name="username" value="${esc(u.username)}" autocapitalize="off" autocomplete="off" required placeholder="cocina"></label>
+          <label>Nombre <input name="name" value="${esc(u.name)}" placeholder="Laura"></label>
+        </div>
+        <label>${isNew ? 'Contraseña' : 'Nueva contraseña'} <input name="password" type="password" autocomplete="new-password" minlength="8" placeholder="${isNew ? 'Mínimo 8 caracteres' : 'Déjala vacía para no cambiarla'}"></label>
+        <div class="field">Qué puede hacer
+          <div class="chips">${Object.entries(roles).map(([k, label]) => `<label><input type="radio" name="role" value="${k}" ${u.role === k ? 'checked' : ''}><span>${esc(label.split(':')[0])}</span></label>`).join('')}</div>
+          <span class="help">${Object.values(roles).map(esc).join('<br>')}</span>
+        </div>
+        <label class="switch-row">Cuenta activa (puede entrar) <span class="sw"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}><span></span></span></label>
+        <p class="help">Se entra en ${esc(S.base.replace(/^https?:\/\//, ''))}/sala/ con este usuario y contraseña. No da acceso al panel.</p>
+        <div class="actions">
+          <button class="btn btn-main" type="submit">${isNew ? 'Crear cuenta' : 'Guardar cambios'}</button>
+          ${!isNew ? '<button type="button" class="btn btn-danger" data-del>Borrar cuenta</button>' : ''}
+        </div>
+      </form>`, (body) => {
+      const f = $('#sala-edit', body);
+      f.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = $('button[type=submit]', f);
+        busy(btn, true);
+        try {
+          await api('sala_user_save', { body: { id: u.id || 0, username: f.username.value, name: f.name.value, password: f.password.value, role: f.role.value, active: f.active.checked } });
+          closeSheet();
+          toast(isNew ? 'Cuenta creada. Ya puede entrar en Sala y cocina.' : 'Cuenta guardada');
+          loadSalaUsers();
+        } catch (err) { toast(err.message, 'err'); busy(btn, false); }
+      });
+      const del = $('[data-del]', f);
+      if (del) del.addEventListener('click', async () => {
+        if (!confirm(`¿Borrar la cuenta «${u.username}»? Dejará de poder entrar en Sala y cocina.`)) return;
+        try { await api('sala_user_delete', { body: { id: u.id } }); closeSheet(); toast('Cuenta borrada'); loadSalaUsers(); }
         catch (err) { toast(err.message, 'err'); }
       });
     });

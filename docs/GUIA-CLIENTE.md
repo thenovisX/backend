@@ -152,6 +152,17 @@ Los recordatorios salen cuando alguien visita la web o usa la app. Para que salg
 4. **Hoy y Calendario:** ves las reservas del día y de cualquier fecha. Las que te hagan por teléfono las apuntas con el botón **Nueva reserva**. En el Calendario también cierras días sueltos (festivos o vacaciones).
 5. **Si el cliente cancela**, desde su enlace o desde su cuenta, la app te avisa.
 
+### 6.1. Sala y cocina: mesas, pedidos y pantalla de cocina
+
+Es un programa aparte para el servicio. Se abre con el icono de los cuadraditos de arriba del panel, o en **tu-web.com/sala/**.
+
+1. **Crea las cuentas** en el panel: **Ajustes → Cuenta → Sala y cocina → Nueva cuenta de sala**. Haz una de **encargado** para ti, una de **cocina** para la tablet de la cocina y una de **camarero** para cada camarero (o una para todos). Estas cuentas solo sirven para Sala y cocina, no para el panel.
+2. **Dibuja el local** (con la cuenta de encargado, pestaña **Plano**): elige la forma de la sala, pon las mesas (arrástralas y cambia su tamaño desde la esquina roja), sus plazas, y añade plantas arriba o abajo si tienes más. Para un evento, en **Fusionar mesas** juntas varias mesas en una. Pulsa **Guardar plano**.
+3. **Preferencias**: decide cuándo se asigna mesa a las reservas (al entrar, al confirmarlas o nunca), si se pueden juntar mesas y cuántas, y qué categorías de la carta van a la barra en vez de a la cocina. Aquí pones también los **especiales del día**.
+4. **En el servicio**: el camarero toca una mesa, la abre y va tocando los platos (con su nota: sin gluten, poco hecho…) y pulsa **Enviar a cocina**. Los postres esperan hasta que los «marcha».
+5. **En la cocina**: deja la tablet en **Cocina**, pulsa **Activar sonido** y **Pantalla completa**. Las comandas salen en orden; tocando cada plato se marca «preparando» y «listo», y al camarero le avisa.
+6. Al terminar, **Cuenta y cerrar mesa** muestra el total (y lo imprime si quieres) y deja la mesa libre.
+
 ---
 
 ## 7. Preguntas frecuentes

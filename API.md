@@ -38,6 +38,8 @@ Límite: 5 reservas por hora desde la misma conexión. `website` es un campo tra
 
 ## Gestión (app; cabecera `X-Token`, que se obtiene con `login`)
 
+Cuentas de Sala y cocina (solo administradores): `sala_users` (GET), `sala_user_save` (POST: `id`?, `username`, `name`, `password`, `role` encargado/camarero/cocina, `active`), `sala_user_delete` (POST: `id`). La API de la sala va aparte (ver más abajo).
+
 Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permisos: `reservas` (estado, guardar, borrar y cerrar días), `carta` (secciones y platos) y `ajustes` (ajustes, fotos y email de prueba). El administrador los tiene todos y gestiona los usuarios. Sin permiso, la API responde 403.
 
 | Ruta | Método | Datos |
@@ -86,3 +88,25 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `tr_list` | GET | (ajustes) todos los textos con sus traducciones, para revisarlas |
 | `tr_save` | POST | (ajustes) `h`, `lang`, `txt` → guarda una traducción corregida a mano (ya no se pisa) |
 | `password` | POST | `current`, `new` |
+
+## Sala y cocina (`sala/api.php?r=…`, cabecera `X-Token` de `login` con una cuenta de sala)
+
+| Ruta | Método | Quién | Datos |
+|---|---|---|---|
+| `login` | POST | todos | `username`, `password` → `token`, `me` |
+| `me`, `logout` | GET / POST | todos | |
+| `state` | GET | encargado, camarero | `date`, `rev`? → plano, pedidos abiertos, reservas del día con sus mesas (o `same: true` si nada ha cambiado desde `rev`) |
+| `carta` | GET | encargado, camarero | categorías y platos disponibles, menús activos, especiales |
+| `order` | GET | encargado, camarero | `id` → pedido con sus platos |
+| `order_open` | POST | encargado, camarero | `tables` [ids], `people`, `note`, `res`? (reserva) |
+| `order_update` | POST | encargado, camarero | `id`, `people`?, `note`?, `tables`? (mover o juntar mesas) |
+| `order_add` | POST | encargado, camarero | `id`, `items` [{`kind` dish/menu/special, `dish` / `menu` + `choices` [{`c`, `d`}] / `special` o `name`+`price`, `qty`, `note`, `course` 0–3, `hold`}] |
+| `order_fire` | POST | encargado, camarero | `id`, `course` (-1 = todo): manda a la cocina lo que estaba en espera |
+| `order_close`, `order_reopen` | POST | encargado, camarero | `id` |
+| `closed_today` | GET | encargado, camarero | pedidos cerrados hoy con su total |
+| `assign_set` | POST | encargado, camarero | `reservation`, `tables` ([] = quitar la mesa) |
+| `assign_auto` | POST | encargado, camarero | `reservation`: busca mesa sola |
+| `kitchen` | GET | todos | `dest` cocina/barra, `rev`? → comandas en orden de llegada |
+| `item_status` | POST | todos (cocina: solo nuevo/preparando/listo) | `id` o `ids`, `status` espera/nuevo/preparando/listo/servido/anulado |
+| `layout_save` | POST | encargado | plano entero (`floors`, `tables`, `groups`) con su `rev` |
+| `prefs` / `prefs_save` | GET / POST | encargado | preferencias de asignación, barra y especiales |
