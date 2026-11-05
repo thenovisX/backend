@@ -4,6 +4,7 @@ declare(strict_types=1);
 function schema_sql(bool $sqlite): array
 {
     $ai = $sqlite ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'INT PRIMARY KEY AUTO_INCREMENT';
+    $big = $sqlite ? 'TEXT' : 'MEDIUMTEXT';
     $tail = $sqlite ? '' : ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
     return [
         "CREATE TABLE IF NOT EXISTS settings (k VARCHAR(64) PRIMARY KEY, v TEXT NOT NULL)$tail",
@@ -32,6 +33,19 @@ function schema_sql(bool $sqlite): array
             status VARCHAR(10) NOT NULL DEFAULT 'nueva', ip VARCHAR(64) NOT NULL DEFAULT '', created_at DATETIME NOT NULL, expires_at DATETIME NULL)$tail",
         "CREATE TABLE IF NOT EXISTS password_resets (id $ai, kind VARCHAR(10) NOT NULL, subject_id INT NOT NULL, token_hash CHAR(64) NOT NULL,
             created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, used_at DATETIME NULL)$tail",
+        // Sala y cocina (lib/sala.php): todo el contenido va cifrado en «data» / «v»
+        "CREATE TABLE IF NOT EXISTS sala_kv (k VARCHAR(64) PRIMARY KEY, v $big NOT NULL)$tail",
+        "CREATE TABLE IF NOT EXISTS sala_users (id $ai, username VARCHAR(60) NOT NULL UNIQUE, name VARCHAR(512) NOT NULL DEFAULT '', pass_hash VARCHAR(255) NOT NULL,
+            role VARCHAR(12) NOT NULL DEFAULT 'camarero', active TINYINT NOT NULL DEFAULT 1, created_at DATETIME NOT NULL)$tail",
+        "CREATE TABLE IF NOT EXISTS sala_tokens (token CHAR(64) PRIMARY KEY, user_id INT NOT NULL, created_at DATETIME NOT NULL, last_used DATETIME NOT NULL)$tail",
+        "CREATE TABLE IF NOT EXISTS sala_orders (id $ai, status VARCHAR(10) NOT NULL DEFAULT 'abierta', data TEXT NOT NULL, opened_at DATETIME NOT NULL, closed_at DATETIME NULL)$tail",
+        "CREATE TABLE IF NOT EXISTS sala_items (id $ai, order_id INT NOT NULL, batch INT NOT NULL DEFAULT 1, status VARCHAR(12) NOT NULL DEFAULT 'nuevo',
+            dest VARCHAR(10) NOT NULL DEFAULT 'cocina', course INT NOT NULL DEFAULT 2, data TEXT NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)$tail",
+        "CREATE TABLE IF NOT EXISTS sala_assign (reservation_id INT PRIMARY KEY, rdate DATE NOT NULL, data TEXT NOT NULL, updated_at DATETIME NOT NULL)$tail",
+        'CREATE INDEX idx_sala_items_order ON sala_items (order_id)',
+        'CREATE INDEX idx_sala_items_status ON sala_items (status)',
+        'CREATE INDEX idx_sala_orders_status ON sala_orders (status)',
+        'CREATE INDEX idx_sala_assign_date ON sala_assign (rdate)',
         'CREATE INDEX idx_reset_hash ON password_resets (token_hash)',
         'CREATE INDEX idx_res_date ON reservations (rdate)',
         'CREATE INDEX idx_dish_cat ON dishes (category_id)',
