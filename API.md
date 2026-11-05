@@ -110,3 +110,23 @@ Todos los usuarios pueden leer reservas y carta. Para cambiar hacen falta permis
 | `item_status` | POST | todos (cocina: solo nuevo/preparando/listo) | `id` o `ids`, `status` espera/nuevo/preparando/listo/servido/anulado |
 | `layout_save` | POST | encargado | plano entero (`floors`, `tables`, `groups`) con su `rev` |
 | `prefs` / `prefs_save` | GET / POST | encargado | preferencias de asignación, barra y especiales |
+| `order_update` (QR) | POST | encargado, camarero | también `call_done` (aviso atendido), `qr` (pedir por QR en esta mesa sí/no), `new_pin` (código nuevo, saca a los móviles) |
+| `order_qr` | GET | encargado, camarero | `id` → código de la mesa, QR (SVG) con el código dentro, móviles conectados |
+| `qr_list` / `qr_rotate` | GET / POST | encargado | QR de todas las mesas para imprimir / cambiar la clave de `table` (o de todas) |
+| `my_ip` | GET | encargado | IP de esta conexión (para «solo desde el wifi del local») |
+
+Los pedidos de `prefs_save` también aceptan `qr`, `qr_pin`, `qr_confirm` y `qr_ips`. El estado `pendiente` de un plato es un pedido por QR que el camarero aún no ha aceptado.
+
+## Pedidos por QR (`mesa/api.php?r=…`, cabecera `X-Mesa` de `join`; sin CORS)
+
+| Ruta | Método | Datos |
+|---|---|---|
+| `info` | POST | `k` (mesa.clave del QR) → mesa, `state` open/closed/off/wifi, `need_pin` |
+| `join` | POST | `k`, `pin` → `token` (sesión del móvil, atada al pedido abierto de la mesa) |
+| `carta` | GET | carta para el móvil |
+| `status` | GET | `rev`? → lo pedido por la mesa, total y aviso activo |
+| `send` | POST | `items` [{`kind` dish/menu/special, `dish` / `menu` + `choices` / `special` (índice), `qty`, `note`}] |
+| `call` | POST | `type` camarero/cuenta |
+| `leave` | POST | cierra la sesión del móvil |
+
+Detalles y medidas de seguridad: [docs/PEDIDOS-QR.md](docs/PEDIDOS-QR.md).

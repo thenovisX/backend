@@ -10,3 +10,5 @@ cat > "$tmp/web/config.php" <<PHP
 <?php return ['db_driver' => 'sqlite', 'db_path' => '$tmp/test.sqlite', 'timezone' => 'Europe/Madrid', 'secret' => 'pruebas-$(date +%s)', 'debug' => true];
 PHP
 php tests/sala_test.php "$tmp/web"
+rm -f "$tmp/test.sqlite"
+php tests/mesa_test.php "$tmp/web"

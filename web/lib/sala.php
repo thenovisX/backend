@@ -19,7 +19,8 @@ const SALA_ROLES = [
     'cocina'    => 'Cocina: solo la pantalla de cocina',
 ];
 const SALA_COURSES = [0 => 'Bebidas', 1 => 'Entrantes', 2 => 'Principales', 3 => 'Postres'];
-const SALA_ITEM_ST = ['espera', 'nuevo', 'preparando', 'listo', 'servido', 'anulado'];
+// «pendiente»: pedido desde el móvil de la mesa (QR) que el camarero aún no ha aceptado (si se pide confirmar)
+const SALA_ITEM_ST = ['pendiente', 'espera', 'nuevo', 'preparando', 'listo', 'servido', 'anulado'];
 const SALA_PREFS_DEFAULT = [
     'assign'     => 'crear',  // off | crear (al entrar la reserva) | confirmar (cuando se acepta o confirma)
     'merge'      => true,     // juntar mesas si no hay ninguna que sirva sola
@@ -31,6 +32,11 @@ const SALA_PREFS_DEFAULT = [
     'floors'     => [],       // plantas donde se asigna solo, por orden de preferencia (vacío = todas)
     'no_kitchen' => [],       // categorías de la carta que van a la barra y no a la cocina
     'specials'   => [],       // especiales del día: [{name, price, course}]
+    // Pedidos desde el móvil con el QR de la mesa (lib/mesa.php)
+    'qr'         => true,     // se puede pedir desde el móvil
+    'qr_pin'     => true,     // hace falta el código de 4 cifras que da el camarero al abrir la mesa
+    'qr_confirm' => false,    // el camarero acepta cada pedido antes de que llegue a la cocina
+    'qr_ips'     => [],       // solo desde estas IP o redes (el wifi del local); vacío = desde cualquier conexión
 ];
 
 /* ---------- Almacén (sala_kv): plano y preferencias, cifrados ---------- */
@@ -289,6 +295,19 @@ function sala_prefs_save(array $in): array
     }
     if (isset($in['floors'])) $p['floors'] = array_values(array_filter(array_map('strval', (array)$in['floors']), fn($x) => preg_match('/^f[a-z0-9]{1,16}$/', $x)));
     if (isset($in['no_kitchen'])) $p['no_kitchen'] = array_values(array_unique(array_map('intval', (array)$in['no_kitchen'])));
+    foreach (['qr', 'qr_pin', 'qr_confirm'] as $k) {
+        if (isset($in[$k])) $p[$k] = filter_var($in[$k], FILTER_VALIDATE_BOOLEAN);
+    }
+    if (isset($in['qr_ips'])) {
+        $ips = [];
+        foreach (array_slice((array)$in['qr_ips'], 0, 20) as $ip) {
+            $ip = trim((string)$ip);
+            if ($ip === '') continue;
+            if (!ip_rule_valid($ip)) throw new ValidationError("«{$ip}» no es una IP válida (ejemplos: 81.40.12.7 o 81.40.12.0/24)");
+            $ips[] = $ip;
+        }
+        $p['qr_ips'] = array_values(array_unique($ips));
+    }
     if (isset($in['specials'])) {
         $p['specials'] = [];
         foreach (array_slice((array)$in['specials'], 0, 40) as $s) {
@@ -578,7 +597,9 @@ function sala_order_row(array $r): array
     $d = json_decode(dec($r['data']), true) ?: [];
     return ['id' => (int)$r['id'], 'status' => $r['status'], 'opened_at' => $r['opened_at'], 'closed_at' => $r['closed_at'],
         'tables' => array_values((array)($d['tables'] ?? [])), 'people' => (int)($d['people'] ?? 0), 'note' => (string)($d['note'] ?? ''),
-        'res' => (int)($d['res'] ?? 0), 'by' => (string)($d['by'] ?? ''), 'total' => (float)($d['total'] ?? 0)];
+        'res' => (int)($d['res'] ?? 0), 'by' => (string)($d['by'] ?? ''), 'total' => (float)($d['total'] ?? 0),
+        // Pedidos por QR: código de la mesa, si se puede pedir desde el móvil y si llaman al camarero
+        'pin' => (string)($d['pin'] ?? ''), 'qr' => !empty($d['qr']), 'call' => is_array($d['call'] ?? null) ? $d['call'] : null];
 }
 
 function sala_item_row(array $r): array
@@ -588,7 +609,7 @@ function sala_item_row(array $r): array
         'dest' => $r['dest'], 'course' => (int)$r['course'], 'sent_at' => $r['created_at'], 'updated_at' => $r['updated_at'],
         'name' => (string)($d['name'] ?? ''), 'qty' => (int)($d['qty'] ?? 1), 'price' => (float)($d['price'] ?? 0),
         'note' => (string)($d['note'] ?? ''), 'kind' => (string)($d['kind'] ?? 'dish'), 'sub' => (string)($d['sub'] ?? ''),
-        'allergens' => array_values((array)($d['allergens'] ?? [])), 'by' => (string)($d['by'] ?? '')];
+        'allergens' => array_values((array)($d['allergens'] ?? [])), 'by' => (string)($d['by'] ?? ''), 'qr' => !empty($d['qr'])];
 }
 
 /** Pedidos abiertos con sus platos. */
@@ -616,7 +637,8 @@ function sala_order_get(int $id): array
 
 function sala_order_save_data(int $id, array $o): void
 {
-    $data = ['tables' => $o['tables'], 'people' => $o['people'], 'note' => $o['note'], 'res' => $o['res'], 'by' => $o['by'], 'total' => $o['total'] ?? 0];
+    $data = ['tables' => $o['tables'], 'people' => $o['people'], 'note' => $o['note'], 'res' => $o['res'], 'by' => $o['by'], 'total' => $o['total'] ?? 0,
+        'pin' => $o['pin'] ?? '', 'qr' => !empty($o['qr']), 'call' => $o['call'] ?? null];
     q('UPDATE sala_orders SET data = ? WHERE id = ?', [enc(json_encode($data, JSON_UNESCAPED_UNICODE)), $id]);
 }
 
@@ -640,7 +662,8 @@ function sala_order_open(array $u, array $in): array
     try {
         $tables = sala_check_tables((array)($in['tables'] ?? []));
         $o = ['tables' => $tables, 'people' => max(0, min(300, (int)($in['people'] ?? 0))), 'note' => mb_substr(trim((string)($in['note'] ?? '')), 0, 300),
-            'res' => max(0, (int)($in['res'] ?? 0)), 'by' => $u['dname'], 'total' => 0];
+            'res' => max(0, (int)($in['res'] ?? 0)), 'by' => $u['dname'], 'total' => 0,
+            'pin' => mesa_new_pin(), 'qr' => (bool)sala_prefs()['qr'], 'call' => null];
         q("INSERT INTO sala_orders (status, data, opened_at) VALUES ('abierta', ?, ?)", [enc(json_encode($o, JSON_UNESCAPED_UNICODE)), now()]);
         $id = (int)$pdo->lastInsertId();
         $pdo->commit();
@@ -660,6 +683,13 @@ function sala_order_update(array $u, array $in): array
     if (isset($in['tables'])) $o['tables'] = sala_check_tables((array)$in['tables'], $o['id']);
     if (isset($in['people'])) $o['people'] = max(0, min(300, (int)$in['people']));
     if (isset($in['note'])) $o['note'] = mb_substr(trim((string)$in['note']), 0, 300);
+    // Pedidos por QR: atender una llamada, encender o apagar el QR de la mesa, o cambiar el código
+    if (!empty($in['call_done'])) $o['call'] = null;
+    if (isset($in['qr'])) $o['qr'] = filter_var($in['qr'], FILTER_VALIDATE_BOOLEAN);
+    if (!empty($in['new_pin']) || (isset($in['qr']) && !$o['qr'])) {
+        if (!empty($in['new_pin'])) $o['pin'] = mesa_new_pin();
+        mesa_kick($o['id']); // los móviles que ya estaban dentro tienen que volver a entrar
+    }
     sala_order_save_data($o['id'], $o);
     sala_bump();
     return sala_order_get($o['id']);
@@ -675,13 +705,31 @@ function sala_course_guess(string $cat): int
     return 2;
 }
 
-/** Añadir platos a un pedido. Los precios y nombres salen siempre de la carta del servidor. */
-function sala_order_add(array $u, array $in): array
+/**
+ * Añadir platos a un pedido. Los precios y nombres salen siempre de la carta del servidor.
+ * $guest: lo pide el cliente desde su móvil (QR): solo platos de la carta, menús y especiales del día
+ * (nada con nombre o precio libre), con límites de cantidad, y el pase y la espera los decide el servidor.
+ */
+function sala_order_add(array $u, array $in, bool $guest = false): array
 {
     $o = sala_order_get((int)($in['id'] ?? 0));
     if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
     $lines = array_slice((array)($in['items'] ?? []), 0, 80);
     if (!$lines) throw new ValidationError('No hay nada que enviar');
+    if ($guest) {
+        if (count($lines) > MESA_LINES_MAX) throw new ValidationError('Son demasiados platos de golpe. Envía una parte y luego el resto.');
+        $units = array_sum(array_map(fn($l) => max(1, (int)($l['qty'] ?? 1)), $lines));
+        if ($units > MESA_UNITS_MAX) throw new ValidationError('Son demasiados platos de golpe (máximo ' . MESA_UNITS_MAX . '). Si sois un grupo grande, pide al camarero.');
+        foreach ($lines as &$l) {
+            $l = (array)$l;
+            if (($l['kind'] ?? '') === 'special' && !(isset($l['special']) && is_numeric($l['special']))) throw new ValidationError('Ese plato no está en la carta');
+            if ((int)($l['qty'] ?? 1) > MESA_QTY_MAX) throw new ValidationError('Como mucho ' . MESA_QTY_MAX . ' de cada plato por envío');
+            $l['note'] = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string)($l['note'] ?? '')) ?? ''), 0, 120);
+            unset($l['course'], $l['hold'], $l['name'], $l['price']);
+            foreach ((array)($l['choices'] ?? []) as $k => $ch) $l['choices'][$k] = ['c' => (int)(((array)$ch)['c'] ?? -1), 'd' => (int)(((array)$ch)['d'] ?? -1)];
+        }
+        unset($l);
+    }
     $prefs = sala_prefs();
     $cats = [];
     foreach (q('SELECT id, name FROM categories')->fetchAll() as $c) $cats[(int)$c['id']] = $c['name'];
@@ -720,6 +768,7 @@ function sala_order_add(array $u, array $in): array
             if ($first) throw new ValidationError('Elige los platos del menú');
         } elseif ($kind === 'special') {
             $sp = isset($l['special']) && is_numeric($l['special']) ? ($prefs['specials'][(int)$l['special']] ?? null) : null;
+            if ($guest && !$sp) throw new ValidationError('Ese plato especial ya no está disponible');
             $name = $sp ? $sp['name'] : mb_substr(trim((string)($l['name'] ?? '')), 0, 80);
             if ($name === '') throw new ValidationError('Escribe el nombre del plato especial');
             $price = $sp ? (float)$sp['price'] : round(max(0, min(9999, (float)($l['price'] ?? 0))), 2);
@@ -733,9 +782,13 @@ function sala_order_add(array $u, array $in): array
     $batch = (int)q('SELECT COALESCE(MAX(batch), 0) + 1 FROM sala_items WHERE order_id = ?', [$o['id']])->fetchColumn();
     foreach ($rows as $r) {
         $data = ['name' => $r['name'], 'price' => $r['price'], 'qty' => $r['qty'], 'note' => $r['note'], 'kind' => $r['kind'], 'sub' => $r['sub'],
-            'allergens' => $r['allergens'], 'by' => $u['dname']];
+            'allergens' => $r['allergens'], 'by' => $u['dname']] + ($guest ? ['qr' => true] : []);
+        // Desde el móvil los postres salen en espera (como al tomar nota) y, si el restaurante lo pide, todo
+        // espera a que el camarero lo acepte
+        $hold = $guest ? $r['course'] === 3 : $r['hold'];
+        $st = $guest && $prefs['qr_confirm'] ? 'pendiente' : ($hold ? 'espera' : 'nuevo');
         q('INSERT INTO sala_items (order_id, batch, status, dest, course, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [$o['id'], $batch, $r['hold'] ? 'espera' : 'nuevo', $r['dest'], $r['course'], enc(json_encode($data, JSON_UNESCAPED_UNICODE)), now(), now()]);
+            [$o['id'], $batch, $st, $r['dest'], $r['course'], enc(json_encode($data, JSON_UNESCAPED_UNICODE)), now(), now()]);
     }
     sala_bump();
     return sala_order_get($o['id']);
@@ -749,7 +802,14 @@ function sala_item_status(array $u, int $itemId, string $status): array
     $it = q('SELECT i.*, o.status AS ost FROM sala_items i JOIN sala_orders o ON o.id = i.order_id WHERE i.id = ?', [$itemId])->fetch();
     if (!$it) throw new ValidationError('El plato no existe');
     if ($it['ost'] !== 'abierta') throw new ValidationError('Ese pedido ya está cerrado');
-    q('UPDATE sala_items SET status = ?, updated_at = ? WHERE id = ?', [$status, now(), $itemId]);
+    if ($u['role'] === 'cocina' && in_array($it['status'], ['pendiente', 'espera'], true)) throw new ValidationError('Ese plato aún no ha llegado a la cocina');
+    if ($status === 'pendiente' && $it['status'] !== 'pendiente') throw new ValidationError('Estado no válido');
+    if ($it['status'] === 'pendiente' && in_array($status, ['nuevo', 'espera'], true)) {
+        // Pedido por QR aceptado por el camarero: para la cocina cuenta desde ahora
+        q('UPDATE sala_items SET status = ?, updated_at = ?, created_at = ? WHERE id = ?', [$status, now(), now(), $itemId]);
+    } else {
+        q('UPDATE sala_items SET status = ?, updated_at = ? WHERE id = ?', [$status, now(), $itemId]);
+    }
     sala_bump();
     return sala_item_row(q('SELECT * FROM sala_items WHERE id = ?', [$itemId])->fetch());
 }
@@ -783,7 +843,7 @@ function sala_order_fire(array $u, int $orderId, int $course): array
 function sala_order_total(array $o): float
 {
     $t = 0.0;
-    foreach ($o['items'] as $i) if ($i['status'] !== 'anulado') $t += $i['price'] * $i['qty'];
+    foreach ($o['items'] as $i) if (!in_array($i['status'], ['anulado', 'pendiente'], true)) $t += $i['price'] * $i['qty'];
     return round($t, 2);
 }
 
@@ -793,8 +853,12 @@ function sala_order_close(array $u, int $id): array
     $o = sala_order_get($id);
     if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
     $o['total'] = sala_order_total($o);
+    $o['call'] = null;
     sala_order_save_data($id, $o);
+    // Lo pedido por QR que nadie aceptó no se cobra
+    q("UPDATE sala_items SET status = 'anulado', updated_at = ? WHERE order_id = ? AND status = 'pendiente'", [now(), $id]);
     q("UPDATE sala_items SET status = 'servido', updated_at = ? WHERE order_id = ? AND status NOT IN ('anulado', 'servido')", [now(), $id]);
+    mesa_kick($id); // los móviles de la mesa ya no pueden pedir
     q("UPDATE sala_orders SET status = 'cerrada', closed_at = ? WHERE id = ?", [now(), $id]);
     sala_bump();
     return sala_order_get($id);
@@ -914,6 +978,7 @@ function sala_purge(): void
             q("DELETE FROM sala_orders WHERE id IN ($ph)", $chunk);
         }
         q('DELETE FROM sala_assign WHERE rdate < ?', [date('Y-m-d', time() - 86400)]);
+        q('DELETE FROM sala_guests WHERE created_at < ?', [date('Y-m-d H:i:s', time() - MESA_SESSION_MAX)]);
     } catch (Throwable $e) {
         error_log('[restaurante] Limpieza de la sala: ' . $e->getMessage());
     }
