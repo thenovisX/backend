@@ -78,7 +78,9 @@
     const t = document.createElement('div');
     t.className = 't ' + type;
     t.textContent = msg;
-    $('#toast').appendChild(t);
+    const box = $('#toast');
+    box.appendChild(t);
+    while (box.children.length > 2) box.firstChild.remove();
     setTimeout(() => t.remove(), type === 'err' ? 5000 : 3200);
   }
   let audio = null;
@@ -312,8 +314,9 @@
       : `<rect class="top" x="${t.x}" y="${t.y}" width="${t.w}" height="${t.h}" rx="${t.kind === 'deco' ? 4 : 10}"/>`;
     const s2 = sub !== undefined ? sub : (t.kind === 'mesa' ? `${t.seats} pl.` : '');
     const two = s2 && t.h >= 54;
+    const label = Math.min(t.w, t.h) >= 26 ? `<text x="${cx}" y="${two ? cy - fs * 0.32 : cy}" font-size="${fs}">${esc(t.name)}</text>` : '';
     return `<g class="tb ${cls}" data-t="${t.id}" role="button" tabindex="0" aria-label="${esc((t.kind === 'mesa' ? 'Mesa ' : '') + t.name)}">${chairs(t)}${top}
-      <text x="${cx}" y="${two ? cy - fs * 0.32 : cy}" font-size="${fs}">${esc(t.name)}</text>
+      ${label}
       ${two ? `<text class="s" x="${cx}" y="${cy + fs * 0.62}" font-size="${Math.max(11, fs * 0.45)}">${esc(s2)}</text>` : ''}</g>`;
   }
   function groupSVG(g, byId, cls = '') {
@@ -411,7 +414,7 @@
     const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
     const resGroups = S.st.reservations.filter((r) => r.tables.length > 1 && resFor(r.tables[0], true) === r && !groups.some((g) => same(g.tables, r.tables)))
       .map((r) => ({ id: 'r' + r.id, name: `${r.name.split(' ')[0]} ${r.time}`, tables: r.tables }));
-    box.innerHTML = floorSVG(f, groups.concat(resGroups).map((g) => groupSVG(g, byId)).join('') + ts.map((t) => tableSVG(t, tableStatus(t), sub(t))).join(''));
+    box.innerHTML = floorSVG(f, groups.concat(resGroups).map((g) => groupSVG(g, byId)).join('') + ts.map((t) => tableSVG(t, tableStatus(t) + (t.kind === 'deco' ? ' ' + decoClass(t) : ''), sub(t))).join(''));
     const open = (el) => { const t = byId[el.dataset.t]; if (t && t.kind === 'mesa') tapTable(t); };
     $$('.tb', box).forEach((g) => {
       g.addEventListener('click', () => open(g));
@@ -972,97 +975,265 @@
   /* ---------- Vista: Editor del plano (encargado) ---------- */
   const SNAP = 10;
   const snap = (v) => Math.round(v / SNAP) * SNAP;
+  const GUIDE = 8; // distancia para que una mesa se «pegue» alineada con otra
   const SHAPES = {
-    rect: (w, h) => [[0, 0], [w, 0], [w, h], [0, h]],
-    L: (w, h) => [[0, 0], [w * 0.55, 0], [w * 0.55, h * 0.5], [w, h * 0.5], [w, h], [0, h]],
-    U: (w, h) => [[0, 0], [w * 0.3, 0], [w * 0.3, h * 0.55], [w * 0.7, h * 0.55], [w * 0.7, 0], [w, 0], [w, h], [0, h]],
-    T: (w, h) => [[0, 0], [w, 0], [w, h * 0.4], [w * 0.7, h * 0.4], [w * 0.7, h], [w * 0.3, h], [w * 0.3, h * 0.4], [0, h * 0.4]],
+    rect: ['Rectángulo', (w, h) => [[0, 0], [w, 0], [w, h], [0, h]]],
+    L: ['En L', (w, h) => [[0, 0], [w * 0.55, 0], [w * 0.55, h * 0.5], [w, h * 0.5], [w, h], [0, h]]],
+    U: ['En U', (w, h) => [[0, 0], [w * 0.3, 0], [w * 0.3, h * 0.55], [w * 0.7, h * 0.55], [w * 0.7, 0], [w, 0], [w, h], [0, h]]],
+    T: ['En T', (w, h) => [[0, 0], [w, 0], [w, h * 0.4], [w * 0.7, h * 0.4], [w * 0.7, h], [w * 0.3, h], [w * 0.3, h * 0.4], [0, h * 0.4]]],
+    cut: ['Esquina cortada', (w, h) => [[0, 0], [w * 0.7, 0], [w, h * 0.35], [w, h], [0, h]]],
   };
+  /** Lo que se puede poner en el plano: se toca o se arrastra al plano. */
+  const PALETTE = {
+    Mesas: [
+      ['Mesa de 2', { kind: 'mesa', shape: 'rect', w: 70, h: 70, seats: 2 }],
+      ['Mesa de 4', { kind: 'mesa', shape: 'rect', w: 90, h: 90, seats: 4 }],
+      ['Mesa de 6', { kind: 'mesa', shape: 'rect', w: 150, h: 80, seats: 6 }],
+      ['Mesa de 8', { kind: 'mesa', shape: 'rect', w: 200, h: 80, seats: 8 }],
+      ['Redonda de 2', { kind: 'mesa', shape: 'round', w: 70, h: 70, seats: 2 }],
+      ['Redonda de 4', { kind: 'mesa', shape: 'round', w: 90, h: 90, seats: 4 }],
+      ['Redonda de 6', { kind: 'mesa', shape: 'round', w: 120, h: 120, seats: 6 }],
+      ['Redonda de 10', { kind: 'mesa', shape: 'round', w: 160, h: 160, seats: 10 }],
+    ],
+    Elementos: [
+      ['Barra', { kind: 'deco', shape: 'rect', w: 240, h: 60 }],
+      ['Puerta', { kind: 'deco', shape: 'rect', w: 90, h: 24 }],
+      ['Ventana', { kind: 'deco', shape: 'rect', w: 140, h: 16 }],
+      ['Pared', { kind: 'deco', shape: 'rect', w: 200, h: 16 }],
+      ['Columna', { kind: 'deco', shape: 'rect', w: 40, h: 40 }],
+      ['Planta', { kind: 'deco', shape: 'round', w: 44, h: 44 }],
+      ['Baños', { kind: 'deco', shape: 'rect', w: 130, h: 110 }],
+      ['Cocina', { kind: 'deco', shape: 'rect', w: 220, h: 150 }],
+      ['Escalera', { kind: 'deco', shape: 'rect', w: 100, h: 170 }],
+    ],
+  };
+  const SIZES = [['Pequeña', 0.8], ['Normal', 1], ['Grande', 1.3]];
+
   async function viewPlano() {
     view().innerHTML = '<div class="spin dark" aria-label="Cargando"></div>';
     try { await loadState(true); } catch (err) { return errBox(err); }
-    S.ed = { l: clone(layout()), dirty: false, mode: 'mover', sel: null, merge: [], vsel: -1 };
+    S.ed = { l: clone(layout()), dirty: false, mode: 'mesas', sel: null, merge: [], vsel: -1, undo: [], redo: [], zoom: 1, lastKey: '', lastT: 0 };
     paintEditor();
   }
   const edFloor = () => { const e = S.ed; let f = e.l.floors.find((x) => x.id === S.floor); if (!f) { f = sortedFloors(e.l)[0]; S.floor = f.id; } return f; };
-  function markDirty() { S.ed.dirty = true; const d = $('#ed-dirty'); if (d) d.hidden = false; }
+  function markDirty() {
+    S.ed.dirty = true;
+    const d = $('#ed-dirty'); if (d) d.hidden = false;
+    paintHistory();
+  }
+  /** Guarda cómo estaba el plano antes de un cambio, para poder deshacerlo. Varios cambios seguidos del mismo campo cuentan como uno. */
+  function snapshot(key = '') {
+    const e = S.ed;
+    if (key && key === e.lastKey && Date.now() - e.lastT < 1500) { e.lastT = Date.now(); return; }
+    e.lastKey = key; e.lastT = Date.now();
+    e.undo.push(JSON.stringify(e.l));
+    if (e.undo.length > 80) e.undo.shift();
+    e.redo = [];
+  }
+  function undoRedo(back) {
+    const e = S.ed;
+    const from = back ? e.undo : e.redo;
+    if (!from.length) return;
+    (back ? e.redo : e.undo).push(JSON.stringify(e.l));
+    e.l = JSON.parse(from.pop());
+    e.lastKey = '';
+    if (e.sel && e.sel.t && !e.l.tables.some((t) => t.id === e.sel.t)) e.sel = null;
+    if (e.sel && e.sel.g && !e.l.groups.some((g) => g.id === e.sel.g)) e.sel = null;
+    e.vsel = -1;
+    markDirty();
+    paintEditor();
+    toast(back ? 'Deshecho' : 'Rehecho');
+  }
+  function paintHistory() {
+    const e = S.ed;
+    const u = $('[data-hist=undo]'), r = $('[data-hist=redo]');
+    if (u) u.disabled = !e.undo.length;
+    if (r) r.disabled = !e.redo.length;
+  }
+  /** Dibujo pequeño de una mesa o elemento (paleta y formas de sala). */
+  function thumb(t) {
+    const pad = t.kind === 'mesa' ? 22 : 6;
+    const s = Math.max(t.w, t.h) + pad * 2;
+    const ox = (s - t.w) / 2 - pad, oy = (s - t.h) / 2 - pad;
+    return `<svg class="thumb" viewBox="${-pad - ox} ${-pad - oy} ${s} ${s}" aria-hidden="true">${tableSVG({ ...t, id: '', x: 0, y: 0, name: '' }, t.kind === 'deco' ? 'deco ' + decoClass(t) : 'libre', '')}</svg>`;
+  }
+  function shapeThumb(k) {
+    const pts = SHAPES[k][1](100, 70).map((p) => p.join(',')).join(' ');
+    return `<svg class="thumb" viewBox="-6 -6 112 82" aria-hidden="true"><polygon class="room" points="${pts}"/></svg>`;
+  }
+  const decoClass = (t) => {
+    const n = norm(t.name || '');
+    const k = ['barra', 'puerta', 'ventana', 'pared', 'columna', 'planta', 'bano', 'cocina', 'escalera'].find((x) => n.includes(x));
+    return k ? 'dk-' + k : '';
+  };
+
   function paintEditor() {
     const e = S.ed;
     const l = e.l;
     const f = edFloor();
+    const tabs = [['mesas', 'Mesas y elementos'], ['forma', 'Forma de la sala'], ['fusionar', 'Fusionar mesas']];
+    let palette = '';
+    if (e.mode === 'mesas') {
+      palette = Object.entries(PALETTE).map(([title, items]) => `<h3>${title}</h3><div class="pal">${items.map(([label, t], i) =>
+        `<button type="button" class="pal-it" data-pal="${title}:${i}" title="Toca para añadir o arrastra al plano">${thumb({ ...t, name: label })}<span>${esc(label)}</span></button>`).join('')}</div>`).join('')
+        + '<p class="help">Toca para ponerlo en el centro, o arrástralo al sitio exacto del plano.</p>';
+    } else if (e.mode === 'forma') {
+      palette = `<h3>Formas de partida</h3><div class="pal">${Object.keys(SHAPES).map((k) => `<button type="button" class="pal-it" data-preset="${k}">${shapeThumb(k)}<span>${SHAPES[k][0]}</span></button>`).join('')}</div>
+        <p class="help">Elige una forma y luego ajústala: arrastra los puntos blancos (esquinas) y toca un punto rosa (mitad de una pared) para añadir otra esquina.</p>`;
+    } else {
+      palette = `<h3>Fusionar mesas</h3><p class="help">Toca en el plano las mesas que quieres juntar para un evento o grupo. Funcionan como una sola para pedidos y reservas.</p>
+        <p class="merge-n"><b>${e.merge.length}</b> mesas elegidas${e.merge.length ? ': ' + esc(e.merge.map((id) => (l.tables.find((t) => t.id === id) || {}).name).join(' + ')) : ''}</p>
+        <div class="actions"><button class="btn" type="button" data-merge ${e.merge.length < 2 ? 'disabled' : ''}>Fusionar</button>${e.merge.length ? '<button class="btn btn-quiet" type="button" data-merge-clear>Quitar selección</button>' : ''}</div>
+        <p class="help">Para separar una fusión, toca su línea discontinua.</p>`;
+    }
     view().innerHTML = `
-      <div class="tools">
-        ${floorTabs(sortedFloors(l), f.id, `<button type="button" data-addf="up">+ Planta arriba</button><button type="button" data-addf="down">+ Planta abajo</button>`)}
+      <div class="tools ed-top">
+        ${floorTabs(sortedFloors(l), f.id, `<button type="button" data-addf="up" title="Añadir una planta encima">+ Arriba</button><button type="button" data-addf="down" title="Añadir una planta debajo">+ Abajo</button>`)}
         <span class="grow"></span>
-        <span id="ed-dirty" ${e.dirty ? '' : 'hidden'}>Cambios sin guardar<i class="dirty-dot"></i></span>
-        <button class="btn btn-quiet btn-sm" type="button" data-undo>Descartar</button>
+        <div class="seg" role="group" aria-label="Deshacer">
+          <button type="button" data-hist="undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶ Deshacer</button>
+          <button type="button" data-hist="redo" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
+        </div>
+        <div class="seg" role="group" aria-label="Zoom">
+          <button type="button" data-zoom="-1" aria-label="Alejar">−</button>
+          <button type="button" data-zoom="0" title="Ver todo">${Math.round(e.zoom * 100)}%</button>
+          <button type="button" data-zoom="1" aria-label="Acercar">+</button>
+        </div>
+        <span id="ed-dirty" ${e.dirty ? '' : 'hidden'}>Sin guardar<i class="dirty-dot"></i></span>
+        <button class="btn btn-quiet btn-sm" type="button" data-discard>Descartar</button>
         <button class="btn btn-main btn-sm" type="button" data-save>Guardar plano</button>
       </div>
-      <div class="ed">
-        <section class="card">
-          <div class="tools">
-            <div class="seg" role="group" aria-label="Modo">${[['mover', 'Mover y cambiar tamaño'], ['forma', 'Forma de la sala'], ['fusionar', 'Fusionar mesas']].map(([k, n]) => `<button type="button" data-mode="${k}" aria-pressed="${e.mode === k}">${n}</button>`).join('')}</div>
-            ${e.mode === 'mover' ? `<button class="btn btn-quiet btn-sm" type="button" data-add="rect">+ Mesa cuadrada</button><button class="btn btn-quiet btn-sm" type="button" data-add="round">+ Mesa redonda</button><button class="btn btn-quiet btn-sm" type="button" data-add="deco">+ Barra, puerta…</button>` : ''}
-            ${e.mode === 'forma' ? `${Object.keys(SHAPES).map((k) => `<button class="btn btn-quiet btn-sm" type="button" data-preset="${k}">${k === 'rect' ? 'Rectángulo' : 'Forma ' + k}</button>`).join('')}` : ''}
-            ${e.mode === 'fusionar' ? `<span class="help">Toca las mesas que quieres juntar (${e.merge.length} elegidas)</span><button class="btn btn-sm" type="button" data-merge ${e.merge.length < 2 ? 'disabled' : ''}>Fusionar</button>` : ''}
-          </div>
+      <div class="ed3">
+        <aside class="card side-l">
+          <div class="mode-tabs" role="tablist" aria-label="Qué quieres hacer">${tabs.map(([k, n]) => `<button type="button" role="tab" data-mode="${k}" aria-selected="${e.mode === k}">${n}</button>`).join('')}</div>
+          ${palette}
+        </aside>
+        <section class="card canvas">
           <div class="map-wrap" id="ed-map"></div>
-          <p class="help" style="margin-top:6px">${{
-            mover: 'Arrastra las mesas para moverlas. Con una mesa elegida, arrastra el punto rojo de la esquina para cambiar su tamaño. Flechas del teclado: mover poco a poco; Supr: borrar.',
-            forma: 'Arrastra los puntos blancos para dar forma a la sala. Toca un punto rosa (en mitad de una pared) para añadir una esquina. Elige una esquina y pulsa «Quitar esquina» para borrarla.',
-            fusionar: 'Las mesas fusionadas funcionan como una sola para pedidos y reservas (para eventos o grupos). Toca la línea discontinua de una fusión para cambiarla o separarla.',
-          }[e.mode]}</p>
         </section>
         <aside class="card props" id="props"></aside>
       </div>`;
     $$('.floors [data-f]').forEach((b) => b.addEventListener('click', () => { S.floor = b.dataset.f; e.sel = null; e.merge = []; e.vsel = -1; paintEditor(); }));
     $$('[data-addf]').forEach((b) => b.addEventListener('click', () => addFloor(b.dataset.addf)));
     $$('[data-mode]').forEach((b) => b.addEventListener('click', () => { e.mode = b.dataset.mode; e.sel = null; e.merge = []; e.vsel = -1; paintEditor(); }));
-    $$('[data-add]').forEach((b) => b.addEventListener('click', () => addTable(b.dataset.add)));
+    $$('[data-hist]').forEach((b) => b.addEventListener('click', () => undoRedo(b.dataset.hist === 'undo')));
+    $$('[data-zoom]').forEach((b) => b.addEventListener('click', () => {
+      const d = Number(b.dataset.zoom);
+      e.zoom = d === 0 ? 1 : Math.max(0.5, Math.min(3, Math.round((e.zoom + d * 0.25) * 100) / 100));
+      paintEditor();
+    }));
+    $$('[data-pal]').forEach((b) => wirePalette(b));
     $$('[data-preset]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('¿Cambiar la forma de la sala? Se pierde la forma actual.')) return;
-      f.shape = SHAPES[b.dataset.preset](f.w, f.h).map(([x, y]) => [snap(x), snap(y)]);
+      snapshot();
+      f.shape = SHAPES[b.dataset.preset][1](f.w, f.h).map(([x, y]) => [snap(x), snap(y)]);
+      e.vsel = -1;
       markDirty(); paintEditor();
     }));
     const mg = $('[data-merge]');
     if (mg) mg.addEventListener('click', () => {
       const name = prompt('Nombre de la fusión (opcional), p. ej. «Comunión García»', '') ?? '';
+      snapshot();
       l.groups = l.groups.filter((g) => !g.tables.some((t) => e.merge.includes(t)));
       l.groups.push({ id: uid('g'), name: name.trim(), tables: e.merge.slice(), seats: 0, auto: true });
       e.sel = { g: l.groups[l.groups.length - 1].id };
       e.merge = [];
       markDirty(); paintEditor();
     });
-    $('[data-undo]').addEventListener('click', () => { if (!e.dirty || confirm('¿Descartar los cambios del plano?')) { S.ed = null; viewPlano(); } });
+    const mc = $('[data-merge-clear]');
+    if (mc) mc.addEventListener('click', () => { e.merge = []; paintEditor(); });
+    $('[data-discard]').addEventListener('click', () => { if (!e.dirty || confirm('¿Descartar todos los cambios del plano desde la última vez que guardaste?')) { S.ed = null; viewPlano(); } });
     $('[data-save]').addEventListener('click', saveLayout);
-    paintEdMap();
+    paintHistory();
     paintProps();
+    paintEdMap();
   }
+
+  /** Paleta: tocar añade en el centro; arrastrar (ratón o dedo) lo deja donde se suelta. */
+  function wirePalette(btn) {
+    const [group, i] = btn.dataset.pal.split(':');
+    const [label, tpl] = PALETTE[group][Number(i)];
+    let start = null, ghost = null;
+    btn.addEventListener('pointerdown', (ev) => {
+      start = { x: ev.clientX, y: ev.clientY, id: ev.pointerId };
+      btn.setPointerCapture(ev.pointerId);
+    });
+    btn.addEventListener('pointermove', (ev) => {
+      if (!start) return;
+      if (!ghost && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 8) {
+        ghost = document.createElement('div');
+        ghost.className = 'ghost';
+        ghost.innerHTML = thumb({ ...tpl, name: label });
+        document.body.appendChild(ghost);
+      }
+      if (ghost) { ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px'; ev.preventDefault(); }
+    });
+    const finish = (ev, cancel) => {
+      if (!start) return;
+      const wasDrag = !!ghost;
+      if (ghost) { ghost.remove(); ghost = null; }
+      start = null;
+      if (cancel) return;
+      const svg = $('#ed-map svg');
+      if (!wasDrag) { addTable(tpl, label); return; }
+      const r = svg.getBoundingClientRect();
+      if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) return;
+      const p = svgPt(svg, ev);
+      addTable(tpl, label, p.x, p.y);
+    };
+    btn.addEventListener('pointerup', (ev) => finish(ev, false));
+    btn.addEventListener('pointercancel', (ev) => finish(ev, true));
+    btn.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); addTable(tpl, label); } });
+  }
+
   function addFloor(dir) {
     const l = S.ed.l;
     const lv = l.floors.map((f) => f.level);
     const level = dir === 'up' ? Math.max(...lv) + 1 : Math.min(...lv) - 1;
     const name = prompt('Nombre de la planta', level > 0 ? `Planta ${level}` : (level < 0 ? 'Sótano' : 'Planta baja'));
     if (name === null) return;
-    const f = { id: uid('f'), name: name.trim() || 'Planta', level, w: 1000, h: 700, shape: SHAPES.rect(1000, 700) };
+    snapshot();
+    const f = { id: uid('f'), name: name.trim() || 'Planta', level, w: 1000, h: 700, shape: SHAPES.rect[1](1000, 700) };
     l.floors.push(f);
     S.floor = f.id;
-    S.ed.sel = { f: f.id };
+    S.ed.sel = null;
     markDirty(); paintEditor();
   }
-  function addTable(kind) {
+  function nextTableName() {
+    return String(S.ed.l.tables.filter((t) => t.kind === 'mesa').reduce((a, t) => Math.max(a, parseInt(t.name, 10) || 0), 0) + 1);
+  }
+  /** Busca un hueco libre cerca de (cx, cy) para no poner la mesa encima de otra. */
+  function freeSpot(f, w, h, cx, cy) {
+    const others = S.ed.l.tables.filter((t) => t.floor === f.id);
+    const hits = (x, y) => others.some((o) => x < o.x + o.w + 20 && o.x < x + w + 20 && y < o.y + o.h + 20 && o.y < y + h + 20);
+    const clampX = (x) => Math.max(0, Math.min(f.w - w, snap(x)));
+    const clampY = (y) => Math.max(0, Math.min(f.h - h, snap(y)));
+    let x = clampX(cx - w / 2), y = clampY(cy - h / 2);
+    if (!hits(x, y)) return [x, y];
+    for (let r = 40; r < Math.max(f.w, f.h); r += 40) {
+      for (let a = 0; a < 16; a++) {
+        const nx = clampX(cx - w / 2 + r * Math.cos((a * Math.PI) / 8));
+        const ny = clampY(cy - h / 2 + r * Math.sin((a * Math.PI) / 8));
+        if (!hits(nx, ny)) return [nx, ny];
+      }
+    }
+    return [x, y];
+  }
+  function addTable(tpl, label, px, py) {
     const f = edFloor();
-    const l = S.ed.l;
-    const mesas = l.tables.filter((t) => t.kind === 'mesa');
-    const nextName = String(mesas.reduce((a, t) => Math.max(a, parseInt(t.name, 10) || 0), 0) + 1);
-    const t = kind === 'deco'
-      ? { id: uid('d'), floor: f.id, kind: 'deco', name: 'Barra', shape: 'rect', x: snap(f.w / 2 - 100), y: snap(f.h / 2 - 30), w: 200, h: 60, seats: 0, auto: false, join: false }
-      : { id: uid('t'), floor: f.id, kind: 'mesa', name: nextName, shape: kind === 'round' ? 'round' : 'rect', x: snap(f.w / 2 - 45), y: snap(f.h / 2 - 45), w: 90, h: 90, seats: kind === 'round' ? 6 : 4, auto: true, join: true };
-    l.tables.push(t);
+    snapshot();
+    const isM = tpl.kind === 'mesa';
+    const t = { id: uid(isM ? 't' : 'd'), floor: f.id, kind: tpl.kind, name: isM ? nextTableName() : label, shape: tpl.shape,
+      w: tpl.w, h: tpl.h, seats: isM ? tpl.seats : 0, auto: isM, join: isM, x: 0, y: 0 };
+    if (px === undefined) [t.x, t.y] = freeSpot(f, t.w, t.h, f.w / 2, f.h / 2);
+    else { t.x = Math.max(0, Math.min(f.w - t.w, snap(px - t.w / 2))); t.y = Math.max(0, Math.min(f.h - t.h, snap(py - t.h / 2))); }
+    S.ed.l.tables.push(t);
     S.ed.sel = { t: t.id };
     markDirty(); paintEdMap(); paintProps();
+    toast(`${isM ? 'Mesa ' + t.name : label} añadida`);
   }
-  function paintEdMap() {
+  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+  function paintEdMap(guides = []) {
     const e = S.ed;
     const box = $('#ed-map');
     if (!box) return;
@@ -1071,18 +1242,32 @@
     const ts = e.l.tables.filter((t) => t.floor === f.id);
     const gs = e.l.groups.filter((g) => byId[g.tables[0]] && byId[g.tables[0]].floor === f.id);
     const selT = e.sel && e.sel.t ? byId[e.sel.t] : null;
-    let extra = '';
-    if (e.mode === 'mover' && selT) extra = `<rect class="hnd" data-h="1" x="${selT.x + selT.w - 11}" y="${selT.y + selT.h - 11}" width="22" height="22" rx="5"/>`;
+    const mesas = ts.filter((t) => t.kind === 'mesa');
+    const clash = new Set();
+    mesas.forEach((a, i) => mesas.slice(i + 1).forEach((b) => { if (overlaps(a, b)) { clash.add(a.id); clash.add(b.id); } }));
+    let extra = guides.map(([k, v]) => (k === 'x' ? `<line class="guide" x1="${v}" y1="-40" x2="${v}" y2="${f.h + 40}"/>` : `<line class="guide" x1="-40" y1="${v}" x2="${f.w + 40}" y2="${v}"/>`)).join('');
+    if (e.mode === 'mesas' && selT) {
+      const c = [['nw', selT.x, selT.y], ['ne', selT.x + selT.w, selT.y], ['sw', selT.x, selT.y + selT.h], ['se', selT.x + selT.w, selT.y + selT.h]];
+      extra += `<rect class="sel-box" x="${selT.x - 6}" y="${selT.y - 6}" width="${selT.w + 12}" height="${selT.h + 12}" rx="8"/>`
+        + c.map(([k, x, y]) => `<circle class="hnd h-${k}" data-h="${k}" cx="${x}" cy="${y}" r="13"/>`).join('')
+        + `<text class="dim" x="${selT.x + selT.w / 2}" y="${selT.y + selT.h + 34}">${selT.w} × ${selT.h}</text>`;
+    }
     if (e.mode === 'forma') {
       const p = f.shape;
-      extra = p.map((a, i) => { const b = p[(i + 1) % p.length]; return `<circle class="mid" data-mid="${i}" cx="${(a[0] + b[0]) / 2}" cy="${(a[1] + b[1]) / 2}" r="12"/>`; }).join('')
-        + p.map((a, i) => `<circle class="vx${e.vsel === i ? ' on' : ''}" data-vx="${i}" cx="${a[0]}" cy="${a[1]}" r="15"/>`).join('');
+      extra += p.map((a, i) => { const b = p[(i + 1) % p.length]; return `<circle class="mid" data-mid="${i}" cx="${(a[0] + b[0]) / 2}" cy="${(a[1] + b[1]) / 2}" r="13"/>`; }).join('')
+        + p.map((a, i) => `<circle class="vx${e.vsel === i ? ' on' : ''}" data-vx="${i}" cx="${a[0]}" cy="${a[1]}" r="17"/>`).join('');
     }
-    const cls = (t) => (t.kind === 'deco' ? 'deco' : 'libre') + ((selT && selT.id === t.id) || e.merge.includes(t.id) ? ' sel' : '');
+    if (!ts.length && e.mode === 'mesas') extra += `<text class="hint" x="${f.w / 2}" y="${f.h / 2}">Arrastra aquí mesas desde la izquierda</text>`;
+    const cls = (t) => (t.kind === 'deco' ? 'deco ' + decoClass(t) : 'libre') + ((selT && selT.id === t.id) || e.merge.includes(t.id) ? ' sel' : '') + (clash.has(t.id) ? ' choca' : '')
+      + (e.mode === 'forma' ? ' dim-t' : '');
     box.innerHTML = floorSVG(f, gs.map((g) => groupSVG(g, byId, e.sel && e.sel.g === g.id ? 'sel' : '')).join('') + ts.map((t) => tableSVG(t, cls(t))).join(''), extra);
     const svg = $('svg', box);
-    // Las fusiones se pueden tocar en su línea
-    $$('.grp', svg).forEach((r) => { r.style.pointerEvents = 'stroke'; r.style.strokeWidth = '10'; r.addEventListener('click', () => { e.sel = { g: r.dataset.g }; paintEdMap(); paintProps(); }); });
+    svg.style.width = `${e.zoom * 100}%`;
+    if (e.zoom > 1) svg.style.maxHeight = 'none';
+    box.classList.toggle('zoomed', e.zoom > 1);
+    $$('.grp', svg).forEach((r) => { r.style.pointerEvents = 'stroke'; r.style.strokeWidth = '12'; r.addEventListener('click', () => { e.sel = { g: r.dataset.g }; paintEdMap(); paintProps(); }); });
+    const warn = $('#clash');
+    if (warn) warn.hidden = !clash.size;
     wireEditor(svg, f);
   }
   function svgPt(svg, ev) {
@@ -1090,11 +1275,28 @@
     p.x = ev.clientX; p.y = ev.clientY;
     return p.matrixTransform(svg.getScreenCTM().inverse());
   }
+  /** Al mover una mesa, se pega a los bordes y centros de las demás si está muy cerca (y se dibuja la línea guía). */
+  function alignTo(t, f) {
+    const others = S.ed.l.tables.filter((o) => o.floor === f.id && o.id !== t.id);
+    const guides = [];
+    for (const [axis, pos, size] of [['x', 'x', 'w'], ['y', 'y', 'h']]) {
+      const mine = [t[pos], t[pos] + t[size] / 2, t[pos] + t[size]];
+      let best = null;
+      others.forEach((o) => [o[pos], o[pos] + o[size] / 2, o[pos] + o[size]].forEach((v) => mine.forEach((m, k) => {
+        const d = v - m;
+        if (Math.abs(d) <= GUIDE && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, v, k };
+      })));
+      if (best) { t[pos] += best.d; guides.push([axis, best.v]); }
+    }
+    return guides;
+  }
   function wireEditor(svg, f) {
     const e = S.ed;
     let drag = null;
     let raf = 0;
-    const redraw = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; paintEdMap(); }); };
+    let guides = [];
+    const redraw = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; paintEdMap(guides); }); };
+    const first = () => { if (drag && !drag.snap) { snapshot(); drag.snap = true; } };
     svg.addEventListener('pointerdown', (ev) => {
       const p = svgPt(svg, ev);
       const tEl = ev.target.closest('[data-t]');
@@ -1103,11 +1305,12 @@
         const mid = ev.target.closest('[data-mid]');
         if (vx) { e.vsel = Number(vx.dataset.vx); drag = { kind: 'vx', i: e.vsel }; }
         else if (mid) {
+          snapshot();
           const i = Number(mid.dataset.mid);
           f.shape.splice(i + 1, 0, [snap(p.x), snap(p.y)]);
-          e.vsel = i + 1; drag = { kind: 'vx', i: i + 1 };
+          e.vsel = i + 1; drag = { kind: 'vx', i: i + 1, snap: true };
           markDirty(); redraw();
-        } else { e.vsel = -1; }
+        } else { e.vsel = -1; redraw(); }
         paintProps();
       } else if (e.mode === 'fusionar') {
         if (tEl) {
@@ -1120,14 +1323,16 @@
         return;
       } else if (ev.target.closest('[data-h]') && e.sel && e.sel.t) {
         const t = e.l.tables.find((x) => x.id === e.sel.t);
-        drag = { kind: 'size', t, ox: p.x - (t.x + t.w), oy: p.y - (t.y + t.h) };
+        const k = ev.target.closest('[data-h]').dataset.h;
+        // La esquina contraria queda quieta
+        drag = { kind: 'size', t, k, ax: k.includes('w') ? t.x + t.w : t.x, ay: k.includes('n') ? t.y + t.h : t.y };
       } else if (tEl) {
         const t = e.l.tables.find((x) => x.id === tEl.dataset.t);
         e.sel = { t: t.id };
-        drag = { kind: 'move', t, ox: p.x - t.x, oy: p.y - t.y, moved: false };
+        drag = { kind: 'move', t, ox: p.x - t.x, oy: p.y - t.y };
         paintProps(); redraw();
       } else {
-        e.sel = { f: f.id };
+        e.sel = null;
         paintProps(); redraw();
       }
       if (drag) { svg.setPointerCapture(ev.pointerId); ev.preventDefault(); }
@@ -1138,37 +1343,76 @@
       if (drag.kind === 'move') {
         const x = Math.max(0, Math.min(f.w - 20, snap(p.x - drag.ox)));
         const y = Math.max(0, Math.min(f.h - 20, snap(p.y - drag.oy)));
-        if (x !== drag.t.x || y !== drag.t.y) { drag.t.x = x; drag.t.y = y; drag.moved = true; markDirty(); redraw(); }
+        if (x !== drag.lx || y !== drag.ly) {
+          first();
+          drag.lx = x; drag.ly = y;
+          drag.t.x = x; drag.t.y = y;
+          guides = alignTo(drag.t, f);
+          markDirty(); redraw();
+        }
       } else if (drag.kind === 'size') {
-        const w = Math.max(30, snap(p.x - drag.ox - drag.t.x));
-        const h = Math.max(30, snap(p.y - drag.oy - drag.t.y));
-        if (w !== drag.t.w || h !== drag.t.h) { drag.t.w = w; drag.t.h = h; markDirty(); redraw(); }
+        const px = snap(p.x), py = snap(p.y);
+        const w = Math.max(30, Math.abs(px - drag.ax)), h = Math.max(20, Math.abs(py - drag.ay));
+        const x = drag.k.includes('w') ? drag.ax - w : drag.ax, y = drag.k.includes('n') ? drag.ay - h : drag.ay;
+        if (w !== drag.t.w || h !== drag.t.h || x !== drag.t.x || y !== drag.t.y) {
+          first();
+          Object.assign(drag.t, { w, h, x: Math.max(0, x), y: Math.max(0, y) });
+          // Las mesas redondas siguen siendo redondas si se arrastra con Mayúsculas
+          if (ev.shiftKey) drag.t.h = drag.t.w;
+          markDirty(); redraw();
+        }
       } else if (drag.kind === 'vx') {
         const pt = [Math.max(0, Math.min(f.w, snap(p.x))), Math.max(0, Math.min(f.h, snap(p.y)))];
+        first();
         f.shape[drag.i] = pt; markDirty(); redraw();
       }
     });
-    const end = () => { if (drag) { drag = null; paintProps(); } };
+    const end = () => { if (drag) { drag = null; guides = []; paintEdMap(); paintProps(); } };
     svg.addEventListener('pointerup', end);
     svg.addEventListener('pointercancel', end);
+    // Doble clic en una mesa: cambiarle el nombre
+    svg.addEventListener('dblclick', (ev) => {
+      const tEl = ev.target.closest('[data-t]');
+      if (!tEl || e.mode !== 'mesas') return;
+      const t = e.l.tables.find((x) => x.id === tEl.dataset.t);
+      const n = prompt('Nombre', t.name);
+      if (n === null || !n.trim()) return;
+      snapshot(); t.name = n.trim().slice(0, 24); markDirty(); paintEdMap(); paintProps();
+    });
   }
   document.addEventListener('keydown', (ev) => {
     const e = S.ed;
-    if (S.view !== 'plano' || !e || !e.sel || !e.sel.t || ev.target.closest('input, textarea, select') || $('.sheet-wrap')) return;
+    if (S.view !== 'plano' || !e || ev.target.closest('input, textarea, select') || $('.sheet-wrap')) return;
+    const mod = ev.ctrlKey || ev.metaKey;
+    if (mod && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undoRedo(!ev.shiftKey); return; }
+    if (mod && ev.key.toLowerCase() === 'y') { ev.preventDefault(); undoRedo(false); return; }
+    if (!e.sel || !e.sel.t) return;
     const t = e.l.tables.find((x) => x.id === e.sel.t);
     if (!t) return;
+    if (mod && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicate(t); return; }
     const d = ev.shiftKey ? 50 : SNAP;
     const mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[ev.key];
-    if (mv) { ev.preventDefault(); t.x = Math.max(0, t.x + mv[0]); t.y = Math.max(0, t.y + mv[1]); markDirty(); paintEdMap(); }
+    if (mv) { ev.preventDefault(); snapshot('key-' + t.id); t.x = Math.max(0, t.x + mv[0]); t.y = Math.max(0, t.y + mv[1]); markDirty(); paintEdMap(); }
     if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteTable(t); }
+    if (ev.key === 'Escape') { e.sel = null; paintEdMap(); paintProps(); }
   });
   function deleteTable(t) {
     const e = S.ed;
-    if (!confirm(`¿Borrar ${t.kind === 'mesa' ? 'la mesa' : ''} «${t.name}»?`)) return;
+    snapshot();
     e.l.tables = e.l.tables.filter((x) => x.id !== t.id);
     e.l.groups = e.l.groups.map((g) => ({ ...g, tables: g.tables.filter((x) => x !== t.id) })).filter((g) => g.tables.length > 1);
     e.sel = null;
     markDirty(); paintEdMap(); paintProps();
+    toast(`«${t.name}» borrada. Pulsa Deshacer si te has equivocado.`);
+  }
+  function duplicate(t) {
+    const e = S.ed;
+    const f = edFloor();
+    snapshot();
+    const isM = t.kind === 'mesa';
+    const n = { ...t, id: uid(isM ? 't' : 'd'), name: isM ? nextTableName() : t.name };
+    [n.x, n.y] = freeSpot(f, t.w, t.h, t.x + t.w * 1.5 + 30, t.y + t.h / 2);
+    e.l.tables.push(n); e.sel = { t: n.id }; markDirty(); paintEdMap(); paintProps();
   }
   function paintProps() {
     const e = S.ed;
@@ -1179,41 +1423,69 @@
     const g = e.sel && e.sel.g ? e.l.groups.find((x) => x.id === e.sel.g) : null;
     const sw = (name, label, on) => `<label class="switch-row">${label} <span class="sw"><input type="checkbox" name="${name}" ${on ? 'checked' : ''}><span></span></span></label>`;
     if (e.mode === 'forma') {
-      box.innerHTML = `<h3>Forma de «${esc(f.name)}»</h3><p class="help">${f.shape.length} esquinas.</p>
+      box.innerHTML = `<h3>Forma de «${esc(f.name)}»</h3><p class="help">${f.shape.length} esquinas.${e.vsel >= 0 ? ' Esquina elegida.' : ' Toca una esquina para elegirla.'}</p>
         <button class="btn btn-danger btn-sm" type="button" data-delv ${e.vsel < 0 || f.shape.length <= 3 ? 'disabled' : ''}>Quitar esquina</button>
         ${floorForm(f)}`;
-      const dv = $('[data-delv]', box);
-      dv.addEventListener('click', () => { f.shape.splice(e.vsel, 1); e.vsel = -1; markDirty(); paintEdMap(); paintProps(); });
+      $('[data-delv]', box).addEventListener('click', () => { snapshot(); f.shape.splice(e.vsel, 1); e.vsel = -1; markDirty(); paintEdMap(); paintProps(); });
       wireFloorForm(box, f);
       return;
     }
     if (t) {
       const isM = t.kind === 'mesa';
-      box.innerHTML = `<h3>${isM ? 'Mesa' : 'Elemento'} «${esc(t.name)}»</h3>
+      box.innerHTML = `<div class="prop-h">${thumb(t)}<h3>${isM ? 'Mesa' : ''} «${esc(t.name)}»</h3></div>
         <form class="form" id="tp" novalidate>
-          <div class="row"><label>Nombre <input name="name" maxlength="24" value="${esc(t.name)}"></label>${isM ? `<label>Plazas <input name="seats" type="number" min="1" max="60" inputmode="numeric" value="${t.seats}"></label>` : ''}</div>
-          <div class="field">Forma<div class="chips"><label><input type="radio" name="shape" value="rect" ${t.shape === 'rect' ? 'checked' : ''}><span>Cuadrada / rectangular</span></label><label><input type="radio" name="shape" value="round" ${t.shape === 'round' ? 'checked' : ''}><span>Redonda / ovalada</span></label></div></div>
-          <div class="row"><label>Ancho <input name="w" type="number" min="20" max="1500" step="10" value="${t.w}"></label><label>Alto <input name="h" type="number" min="20" max="1500" step="10" value="${t.h}"></label></div>
-          ${isM ? sw('auto', 'Se puede asignar sola a las reservas', t.auto) + sw('join', 'Se puede juntar con las de al lado', t.join) : ''}
-          <div class="actions"><button class="btn btn-quiet btn-sm" type="button" data-rot>Girar</button><button class="btn btn-quiet btn-sm" type="button" data-dup>Duplicar</button><button class="btn btn-danger btn-sm" type="button" data-del>Borrar</button></div>
+          <label>Nombre <input name="name" maxlength="24" value="${esc(t.name)}"></label>
+          ${isM ? `<div class="field">Plazas <div class="big-step"><button type="button" data-seat="-1" aria-label="Una plaza menos">−</button><output>${t.seats}</output><button type="button" data-seat="1" aria-label="Una plaza más">+</button></div></div>` : ''}
+          <div class="field">Forma<div class="icon-choice">
+            <button type="button" data-shape="rect" aria-pressed="${t.shape === 'rect'}">${thumb({ ...t, shape: 'rect', w: 80, h: 80 })}<span>Cuadrada</span></button>
+            <button type="button" data-shape="round" aria-pressed="${t.shape === 'round'}">${thumb({ ...t, shape: 'round', w: 80, h: 80 })}<span>Redonda</span></button>
+          </div></div>
+          <div class="field">Tamaño<div class="chips">${SIZES.map(([n, k]) => `<button type="button" class="chip-btn" data-size="${k}">${n}</button>`).join('')}</div>
+            <span class="help">${t.w} × ${t.h}. También puedes arrastrar las esquinas rojas del plano.</span></div>
+          <div class="tool-row">
+            <button class="btn btn-quiet" type="button" data-rot title="Girar 90°">⟳ Girar</button>
+            <button class="btn btn-quiet" type="button" data-dup title="Duplicar (Ctrl+D)">⧉ Duplicar</button>
+            <button class="btn btn-danger" type="button" data-del title="Borrar (Supr)">Borrar</button>
+          </div>
+          ${isM ? `<details class="more"><summary>Reservas automáticas</summary>${sw('auto', 'Se puede asignar sola a las reservas', t.auto)}${sw('join', 'Se puede juntar con las de al lado', t.join)}</details>` : ''}
+          <details class="more"><summary>Medidas exactas</summary><div class="row"><label>Ancho <input name="w" type="number" min="20" max="1500" step="10" value="${t.w}"></label><label>Fondo <input name="h" type="number" min="20" max="1500" step="10" value="${t.h}"></label></div></details>
         </form>`;
       const fm = $('#tp', box);
-      fm.addEventListener('input', () => {
-        t.name = fm.name.value.slice(0, 24) || t.name;
-        if (isM) t.seats = Math.max(1, Math.min(60, Number(fm.seats.value) || 1));
-        t.shape = fm.shape.value;
-        t.w = Math.max(20, Number(fm.w.value) || t.w);
-        t.h = Math.max(20, Number(fm.h.value) || t.h);
-        if (isM) { t.auto = fm.auto.checked; t.join = fm.join.checked; }
-        markDirty(); paintEdMap();
-      });
-      fm.addEventListener('change', () => { $('h3', box).textContent = `${isM ? 'Mesa' : 'Elemento'} «${t.name}»`; });
-      $('[data-rot]', fm).addEventListener('click', () => { [t.w, t.h] = [t.h, t.w]; markDirty(); paintEdMap(); paintProps(); });
-      $('[data-dup]', fm).addEventListener('click', () => {
-        const n = { ...t, id: uid(t.kind === 'mesa' ? 't' : 'd'), x: Math.min(f.w - t.w, t.x + t.w + 30), name: isM ? String((parseInt(t.name, 10) || 0) + 1) : t.name };
-        e.l.tables.push(n); e.sel = { t: n.id }; markDirty(); paintEdMap(); paintProps();
-      });
+      const done = () => { markDirty(); paintEdMap(); paintProps(); };
+      fm.name.addEventListener('input', () => { snapshot('name-' + t.id); t.name = fm.name.value.slice(0, 24) || t.name; markDirty(); paintEdMap(); });
+      $$('[data-seat]', fm).forEach((b) => b.addEventListener('click', () => {
+        snapshot('seat-' + t.id);
+        t.seats = Math.max(1, Math.min(60, t.seats + Number(b.dataset.seat)));
+        done();
+      }));
+      $$('[data-shape]', fm).forEach((b) => b.addEventListener('click', () => {
+        if (t.shape === b.dataset.shape) return;
+        snapshot();
+        t.shape = b.dataset.shape;
+        if (t.shape === 'round' && Math.abs(t.w - t.h) < 30) t.h = t.w;
+        done();
+      }));
+      $$('[data-size]', fm).forEach((b) => b.addEventListener('click', () => {
+        snapshot();
+        const k = Number(b.dataset.size);
+        // Tamaño «normal» según las plazas (los elementos se agrandan o achican desde su tamaño actual)
+        let w, h;
+        if (!isM) { w = t.w * k; h = t.h * k; }
+        else if (t.shape === 'round') { w = h = (50 + t.seats * 11) * k; }
+        else if (t.seats <= 4) { w = h = (t.seats <= 2 ? 70 : 90) * k; }
+        else { w = (25 * t.seats) * k; h = 80 * k; }
+        if (isM && t.w < t.h) [w, h] = [h, w];
+        t.w = Math.max(30, snap(w)); t.h = Math.max(20, snap(h));
+        done();
+      }));
+      $('[data-rot]', fm).addEventListener('click', () => { snapshot(); [t.w, t.h] = [t.h, t.w]; done(); });
+      $('[data-dup]', fm).addEventListener('click', () => duplicate(t));
       $('[data-del]', fm).addEventListener('click', () => deleteTable(t));
+      fm.addEventListener('change', (ev) => {
+        if (ev.target.name === 'auto' || ev.target.name === 'join') { snapshot(); t[ev.target.name] = ev.target.checked; markDirty(); }
+        if (ev.target.name === 'w' || ev.target.name === 'h') { snapshot(); t[ev.target.name] = Math.max(20, Math.min(1500, Number(ev.target.value) || t[ev.target.name])); done(); }
+        if (ev.target.name === 'name') paintProps();
+      });
       return;
     }
     if (g) {
@@ -1224,15 +1496,19 @@
           <label>Nombre (opcional) <input name="name" maxlength="40" value="${esc(g.name)}" placeholder="Evento, comunión…"></label>
           <label>Plazas <input name="seats" type="number" min="0" max="300" value="${g.seats || ''}" placeholder="${sum}"><span class="help">Vacío = la suma de las mesas (${sum}).</span></label>
           ${sw('auto', 'Se puede asignar sola a las reservas', g.auto)}
-          <button class="btn btn-danger btn-sm" type="button" data-split>Separar las mesas</button>
+          <button class="btn btn-danger" type="button" data-split>Separar las mesas</button>
         </form>`;
       const fm = $('#gp', box);
-      fm.addEventListener('input', () => { g.name = fm.name.value; g.seats = Number(fm.seats.value) || 0; g.auto = fm.auto.checked; markDirty(); paintEdMap(); });
-      $('[data-split]', fm).addEventListener('click', () => { e.l.groups = e.l.groups.filter((x) => x.id !== g.id); e.sel = null; markDirty(); paintEdMap(); paintProps(); });
+      fm.addEventListener('input', () => { snapshot('grp-' + g.id); g.name = fm.name.value; g.seats = Number(fm.seats.value) || 0; g.auto = fm.auto.checked; markDirty(); paintEdMap(); });
+      $('[data-split]', fm).addEventListener('click', () => { snapshot(); e.l.groups = e.l.groups.filter((x) => x.id !== g.id); e.sel = null; markDirty(); paintEdMap(); paintProps(); });
       return;
     }
-    box.innerHTML = `<h3>Planta «${esc(f.name)}»</h3>${floorForm(f)}
-      <p class="help" style="margin-top:12px">${e.l.tables.filter((x) => x.floor === f.id && x.kind === 'mesa').length} mesas en esta planta. Toca una mesa para cambiarla.</p>`;
+    const n = e.l.tables.filter((x) => x.floor === f.id && x.kind === 'mesa');
+    box.innerHTML = `<h3>Planta «${esc(f.name)}»</h3>
+      <p class="stat"><b>${n.length}</b> mesas · <b>${n.reduce((a, x) => a + x.seats, 0)}</b> plazas</p>
+      <p class="warn" id="clash" hidden>Hay mesas encima de otras (marcadas en rojo).</p>
+      <p class="help">Toca una mesa del plano para cambiarla. Doble clic: cambiar el nombre. Ctrl+Z: deshacer.</p>
+      ${floorForm(f)}`;
     wireFloorForm(box, f);
   }
   function floorForm(f) {
@@ -1247,6 +1523,7 @@
     const fm = $('#fp', box);
     if (!fm) return;
     fm.addEventListener('change', () => {
+      snapshot();
       const w = Math.max(300, Math.min(4000, Number(fm.w.value) || f.w));
       const h = Math.max(300, Math.min(4000, Number(fm.h.value) || f.h));
       if (w !== f.w || h !== f.h) { f.shape = f.shape.map(([x, y]) => [Math.round((x * w) / f.w), Math.round((y * h) / f.h)]); f.w = w; f.h = h; }
@@ -1254,6 +1531,7 @@
       markDirty(); paintEditor();
     });
     $$('[data-lv]', fm).forEach((b) => b.addEventListener('click', () => {
+      snapshot();
       const d = Number(b.dataset.lv);
       const other = S.ed.l.floors.find((x) => x.level === f.level + d);
       if (other) other.level = f.level;
@@ -1263,7 +1541,8 @@
     const del = $('[data-delf]', fm);
     if (del) del.addEventListener('click', () => {
       const n = S.ed.l.tables.filter((x) => x.floor === f.id).length;
-      if (!confirm(`¿Borrar la planta «${f.name}»${n ? ` y sus ${n} mesas y elementos` : ''}?`)) return;
+      if (!confirm(`¿Borrar la planta «${f.name}»${n ? ` y sus ${n} mesas y elementos` : ''}? (Se puede deshacer hasta que guardes.)`)) return;
+      snapshot();
       const l = S.ed.l;
       const gone = new Set(l.tables.filter((x) => x.floor === f.id).map((x) => x.id));
       l.tables = l.tables.filter((x) => x.floor !== f.id);
