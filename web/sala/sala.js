@@ -54,6 +54,11 @@
     sound: LS.get('sala_sound') === '1',
     readySeen: null,
     ed: null,            // editor de plano
+    back: 'sala',        // a dónde vuelve el botón «←» del pedido
+    nota: LS.get('sala_nota') || '', // bloc de notas: 'o:<pedido>' (mesa abierta) o 't:<mesa>' (mesa libre)
+    notaCat: '',
+    notaQ: '',
+    notaPeople: 0,
   };
   const role = () => (S.me ? S.me.role : '');
   const canSala = () => ['encargado', 'camarero'].includes(role());
@@ -177,7 +182,7 @@
   /* ---------- Marco y navegación ---------- */
   function views() {
     const v = [];
-    if (canSala()) v.push(['sala', 'Sala']);
+    if (canSala()) v.push(['sala', 'Sala'], ['nota', 'Tomar nota']);
     v.push(['cocina', 'Cocina']);
     if (isBoss()) v.push(['plano', 'Plano'], ['prefs', 'Preferencias']);
     return v;
@@ -186,6 +191,8 @@
     if (!S.token || !S.me) return renderLogin();
     const ok = views().map((v) => v[0]);
     if (S.view === 'pedido' && !canSala()) S.view = '';
+    // En el móvil, el camarero empieza en el bloc de notas
+    if (!S.view && canSala() && window.matchMedia('(max-width: 700px)').matches) S.view = 'nota';
     if (!ok.includes(S.view) && S.view !== 'pedido') S.view = ok[0];
     $('#app').innerHTML = `
       <header class="bar">
@@ -206,13 +213,14 @@
   function go(v, keep) {
     if (S.view === 'plano' && v !== 'plano' && S.ed && S.ed.dirty && !confirm('Tienes cambios en el plano sin guardar. ¿Salir sin guardarlos?')) return;
     if (v !== 'plano') S.ed = null;
+    if (v === 'pedido' && S.view !== 'pedido') S.back = S.view === 'nota' ? 'nota' : 'sala';
     S.view = v;
     if (v !== 'pedido') LS.set('sala_view', v);
     document.body.className = v === 'cocina' ? 'k' : '';
-    $$('.nav [data-v]').forEach((b) => { if (b.dataset.v === v || (v === 'pedido' && b.dataset.v === 'sala')) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+    $$('.nav [data-v]').forEach((b) => { if (b.dataset.v === v || (v === 'pedido' && b.dataset.v === (S.back || 'sala'))) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     if (!keep) window.scrollTo(0, 0);
     stopTimers();
-    ({ sala: viewSala, pedido: viewPedido, cocina: viewCocina, plano: viewPlano, prefs: viewPrefs })[v]();
+    ({ sala: viewSala, nota: viewNota, pedido: viewPedido, cocina: viewCocina, plano: viewPlano, prefs: viewPrefs })[v]();
   }
   let timer = null;
   let clockT = null;
@@ -549,16 +557,21 @@
       } catch (e) { /* reintenta */ }
     });
   }
-  const draft = () => (S.drafts[S.orderId] = S.drafts[S.orderId] || []);
+  /** Lo apuntado y sin enviar: por pedido (o por mesa libre en el bloc de notas, hasta que se abre al enviar). */
+  const dKey = () => (S.view === 'nota' ? notaDKey() : S.orderId);
+  const draft = () => (S.drafts[dKey()] = S.drafts[dKey()] || []);
+  const redraw = () => (S.view === 'nota' ? (paintLines(), paintCatalog()) : paintComanda());
+  const toSend = (l) => ({ kind: l.kind, dish: l.dish, menu: l.menu, choices: l.choices, special: l.special, name: l.name, price: l.price, qty: l.qty, note: l.note, course: l.course, hold: l.hold });
   function paintPedido() {
     view().innerHTML = `
       <div class="ped-head">
-        <button class="btn btn-quiet btn-sm" type="button" data-back>← Sala</button>
+        <button class="btn btn-quiet btn-sm" type="button" data-back>← ${S.back === 'nota' ? 'Nota' : 'Sala'}</button>
         <h1>${esc(tLabel(order.tables))}</h1>
         <span class="meta">${order.people ? order.people + ' pers. · ' : ''}abierta a las ${esc(order.opened_at.slice(11, 16))} por ${esc(order.by)}${order.note ? ' · ' + esc(order.note) : ''}</span>
         <span class="grow"></span>
         <button class="btn btn-quiet btn-sm" type="button" data-qr>${order.qr ? `QR · código ${esc(order.pin)}` : 'QR apagado'}</button>
         <button class="btn btn-quiet btn-sm" type="button" data-edit>Personas, nota y mesas</button>
+        <button class="btn btn-quiet btn-sm" type="button" data-pad>Bloc de notas</button>
       </div>
       <div class="ped">
         <section class="card">
@@ -568,9 +581,10 @@
         </section>
         <section class="card comanda" id="comanda"></section>
       </div>`;
-    $('[data-back]').addEventListener('click', () => go('sala'));
+    $('[data-back]').addEventListener('click', () => go(S.back || 'sala'));
     $('[data-edit]').addEventListener('click', editOrder);
     $('[data-qr]').addEventListener('click', qrSheet);
+    $('[data-pad]').addEventListener('click', () => { setNota('o:' + order.id); go('nota'); });
     $('#q').addEventListener('input', (e) => { S.q = e.target.value; paintDishes(); });
     paintDishes();
     paintComanda();
@@ -638,7 +652,7 @@
   function addLine(line) {
     openSheet(line.free ? 'Otro plato o bebida' : line.name, `
       <form class="form" id="add-f" novalidate>
-        ${line.free ? `<div class="row"><label>Nombre <input name="name" maxlength="80" required></label><label>Precio (€) <input name="price" type="number" step="0.01" min="0" inputmode="decimal" value=""></label></div>` : `<p class="help">${euro(line.price)}${line.allergens && line.allergens.length ? ' · Alérgenos: ' + esc(line.allergens.join(', ')) : ''}${line.barra ? ' · va a la barra' : ''}</p>`}
+        ${line.free ? `<div class="row"><label>Nombre <input name="name" maxlength="80" required value="${esc(line.name)}"></label><label>Precio (€) <input name="price" type="number" step="0.01" min="0" inputmode="decimal" value=""></label></div>` : `<p class="help">${euro(line.price)}${line.allergens && line.allergens.length ? ' · Alérgenos: ' + esc(line.allergens.join(', ')) : ''}${line.barra ? ' · va a la barra' : ''}</p>`}
         <div class="row"><span class="field">Cantidad ${stepper('qty', 1)}</span></div>
         ${courseChips(line.course)}
         ${noteField()}
@@ -660,7 +674,7 @@
         draft().push(l);
         saveDrafts();
         closeSheet();
-        paintComanda();
+        redraw();
       });
     });
   }
@@ -691,7 +705,7 @@
         draft().push({ kind: 'menu', menu: m.id, name: m.title, detail: names.join(' / '), price, qty: Number($('output', f).textContent), note: f.note.value.trim(), choices, course: 1, key: uid('l') });
         saveDrafts();
         closeSheet();
-        paintComanda();
+        redraw();
       });
     });
   }
@@ -733,7 +747,7 @@
     if (send) send.addEventListener('click', async () => {
       busy(send, true, 'Enviando…');
       try {
-        order = await api('order_add', { body: { id: order.id, items: d.map((l) => ({ kind: l.kind, dish: l.dish, menu: l.menu, choices: l.choices, special: l.special, name: l.name, price: l.price, qty: l.qty, note: l.note, course: l.course, hold: l.hold })) } });
+        order = await api('order_add', { body: { id: order.id, items: d.map(toSend) } });
         S.drafts[S.orderId] = [];
         saveDrafts();
         toast('Enviado a cocina', 'ok');
@@ -887,6 +901,310 @@
         } catch (err) { busy(e.currentTarget, false); toast(err.message, 'err'); }
       });
     });
+  }
+
+  /* ---------- Vista: Tomar nota (bloc de notas, pensado para el móvil) ---------- */
+  // Arriba se elige la mesa en una lista; debajo se van apuntando platos con cuántos de cada uno.
+  // Se envía a la cocina igual que desde el pedido. Una mesa libre se abre sola al enviar.
+  const setNota = (v) => { S.nota = v; LS.set('sala_nota', v); };
+  const notaOrder = () => { const m = /^o:(\d+)$/.exec(S.nota); return m && S.st ? S.st.orders.find((o) => o.id === Number(m[1])) || null : null; };
+  const notaTable = () => { const m = /^t:(.+)$/.exec(S.nota); return m && S.st ? tById()[m[1]] || null : null; };
+  function notaDKey() { const m = /^o:(\d+)$/.exec(S.nota); return m ? Number(m[1]) : S.nota; }
+  const notaDraft = () => (S.nota ? S.drafts[notaDKey()] || [] : []);
+  const qtyOf = (list) => list.reduce((a, l) => a + l.qty, 0);
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name), 'es', { numeric: true });
+  function moveDraft(from, to) {
+    const a = S.drafts[from];
+    if (a && a.length) S.drafts[to] = (S.drafts[to] || []).concat(a);
+    delete S.drafts[from];
+    saveDrafts();
+  }
+  /** La mesa elegida puede haber cambiado: otro camarero la ha abierto, o se ha cobrado. */
+  function fixNota() {
+    if (!S.nota || !S.st) return;
+    const t = notaTable();
+    if (t) {
+      const o = orderOf(t.id);
+      if (o) { moveDraft(S.nota, o.id); setNota('o:' + o.id); }
+    } else if (/^t:/.test(S.nota)) setNota('');
+    else if (!notaOrder()) { setNota(''); toast('Esa mesa ya se ha cerrado'); }
+  }
+  async function viewNota() {
+    if (S.date !== iso(clock()) || S.time) { S.date = iso(clock()); S.time = ''; S.rev = ''; }
+    view().innerHTML = '<div class="spin dark" aria-label="Cargando"></div>';
+    try {
+      const [, c] = await Promise.all([loadState(true), S.carta ? Promise.resolve(S.carta) : api('carta')]);
+      S.carta = c;
+    } catch (err) { return errBox(err); }
+    if (!S.notaCat) S.notaCat = S.carta.categories.length ? 'c' + S.carta.categories[0].id : 'esp';
+    fixNota();
+    paintNota();
+    every(5000, async () => {
+      try {
+        if (!(await loadState()) || S.view !== 'nota') return;
+        const was = S.nota;
+        fixNota();
+        paintNotaTop();
+        paintSent();
+        if (was !== S.nota) { paintLines(); paintCatalog(); } else paintFoot();
+      } catch (e) { /* reintenta */ }
+    });
+  }
+  function paintNota() {
+    view().innerHTML = `
+      <div class="pad">
+        <div class="pad-top" id="nt-top"></div>
+        <div class="pad-paper">
+          <ol class="pad-lines" id="nt-lines" aria-label="Lo apuntado"></ol>
+          <div class="pad-add"><span class="pad-plus" aria-hidden="true">+</span><input id="nt-q" type="search" placeholder="Escribe o elige un plato…" autocomplete="off" enterkeyhint="done" aria-label="Buscar plato" value="${esc(S.notaQ)}"></div>
+          <div class="ctabs pad-cats" id="nt-cats" role="tablist" aria-label="Carta"></div>
+          <div class="pad-menu" id="nt-menu"></div>
+          <div id="nt-sent"></div>
+        </div>
+      </div>
+      <div class="pad-foot"><div class="pad-foot-in" id="nt-foot"></div></div>`;
+    const q = $('#nt-q');
+    q.addEventListener('input', () => { S.notaQ = q.value; paintCatalog(); });
+    q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const b = $('#nt-menu .pm'); if (b && S.notaQ.trim()) b.click(); } });
+    // Tocar un plato mientras se escribe no cierra el teclado
+    $('#nt-menu').addEventListener('mousedown', (e) => { if (e.target.closest('.pm') && document.activeElement === q) e.preventDefault(); });
+    paintNotaTop(true);
+    paintLines();
+    paintCatalog();
+    paintSent();
+  }
+  /** Lista de mesas: por planta; las abiertas salen con su pedido (las juntadas, una sola vez). */
+  function notaOptions() {
+    const l = layout();
+    const seen = new Set();
+    const opt = (v, label) => `<option value="${esc(v)}"${S.nota === v ? ' selected' : ''}>${esc(label)}</option>`;
+    const pending = (k) => ((S.drafts[k] || []).length ? ' · ✎ sin enviar' : '');
+    const floors = sortedFloors(l).map((f) => {
+      const rows = l.tables.filter((t) => t.kind === 'mesa' && t.floor === f.id).sort(byName).map((t) => {
+        const o = orderOf(t.id);
+        if (o) {
+          if (seen.has(o.id)) return '';
+          seen.add(o.id);
+          return opt('o:' + o.id, `${tLabel(o.tables)} · ocupada${o.people ? ` · ${o.people} pers.` : ''}${pending(o.id)}`);
+        }
+        const r = resFor(t.id, true);
+        return opt('t:' + t.id, `Mesa ${t.name} · ${r ? `reserva ${r.time}` : 'libre'}${pending('t:' + t.id)}`);
+      }).join('');
+      return rows ? (l.floors.length > 1 ? `<optgroup label="${esc(f.name)}">${rows}</optgroup>` : rows) : '';
+    }).join('');
+    return `<option value=""${S.nota ? '' : ' selected'}>Elige la mesa…</option>${floors}`;
+  }
+  let notaOptsHtml = '';
+  function paintNotaTop(force) {
+    const box = $('#nt-top');
+    if (!box) return;
+    const html = notaOptions();
+    if (force || html !== notaOptsHtml || !$('#nt-mesa')) {
+      // Solo se rehace la lista si ha cambiado, para no cerrarla mientras el camarero la tiene abierta
+      notaOptsHtml = html;
+      box.innerHTML = `<label class="pad-mesa"><span>Mesa</span><select id="nt-mesa">${html}</select></label><div class="pad-meta" id="nt-meta"></div>`;
+      $('#nt-mesa').addEventListener('change', (e) => {
+        setNota(e.target.value);
+        const t = notaTable();
+        const r = t ? resFor(t.id, true) : null;
+        S.notaPeople = r ? r.people : 0;
+        paintNotaTop(true); paintLines(); paintCatalog(); paintSent();
+      });
+    }
+    const meta = $('#nt-meta');
+    const o = notaOrder();
+    const t = notaTable();
+    if (o) {
+      const pend = o.items.filter((i) => i.status === 'pendiente').length;
+      const ready = o.items.filter((i) => i.status === 'listo').length;
+      meta.innerHTML = `<span>Abierta a las ${esc(o.opened_at.slice(11, 16))}${o.people ? ` · ${o.people} pers.` : ''}${o.note ? ` · ${esc(o.note)}` : ''}</span>
+        ${o.call || pend || ready ? `<span class="pad-alert">${[o.call ? (o.call.type === 'cuenta' ? 'Piden la cuenta' : 'Llaman al camarero') : '', pend ? 'Pedido del móvil por aceptar' : '', ready ? `${ready} listo(s) para servir` : ''].filter(Boolean).map(esc).join(' · ')}</span>` : ''}
+        <button class="btn btn-quiet btn-sm" type="button" data-ped>Ver pedido</button>`;
+      $('[data-ped]', meta).addEventListener('click', () => { S.orderId = o.id; go('pedido'); });
+    } else if (t) {
+      const r = resFor(t.id, true);
+      meta.innerHTML = `<span>${r ? `Reserva de ${esc(r.name)} a las ${esc(r.time)}` : 'Libre'} · ${t.seats} plazas. Se abre al enviar.</span>
+        <span class="pad-people">Personas <span class="stepper"><button type="button" data-pp="-1" aria-label="Una persona menos">−</button><output>${S.notaPeople || '?'}</output><button type="button" data-pp="1" aria-label="Una persona más">+</button></span></span>`;
+      $$('[data-pp]', meta).forEach((b) => b.addEventListener('click', () => {
+        S.notaPeople = Math.max(0, Math.min(99, (S.notaPeople || 0) + Number(b.dataset.pp)));
+        $('output', meta).textContent = S.notaPeople || '?';
+      }));
+    } else {
+      meta.innerHTML = '<span>Elige en la lista la mesa a la que vas a tomar nota.</span>';
+    }
+  }
+  function paintLines() {
+    const box = $('#nt-lines');
+    if (!box) return;
+    const d = notaDraft();
+    box.innerHTML = d.map((l) => `<li class="pl" data-key="${l.key}">
+        <b class="pl-q">${l.qty}</b>
+        <button type="button" class="pl-n" data-k="${l.key}"><span>${esc(l.name)}</span>
+          ${l.detail ? `<small>${esc(l.detail)}</small>` : ''}
+          <small>${esc(COURSES[l.course])}${l.hold ? ' · en espera' : ''} · ${euro(l.price * l.qty)}</small>
+          ${l.note ? `<small class="nota">${esc(l.note)}</small>` : ''}</button>
+        <span class="pl-st"><button type="button" data-q="-1" data-k="${l.key}" aria-label="Uno menos de ${esc(l.name)}">−</button><button type="button" data-q="1" data-k="${l.key}" aria-label="Uno más de ${esc(l.name)}">+</button></span>
+      </li>`).join('')
+      + (d.length ? '' : `<li class="pl pl-empty"><span class="pl-q"></span><span>${S.nota ? 'Toca los platos de abajo o escribe su nombre.' : 'Primero elige la mesa arriba.'}</span></li>`);
+    $$('[data-q]', box).forEach((b) => b.addEventListener('click', () => {
+      const l = draft().find((x) => x.key === b.dataset.k);
+      if (!l) return;
+      l.qty += Number(b.dataset.q);
+      if (l.qty < 1) S.drafts[notaDKey()] = draft().filter((x) => x !== l);
+      l.qty = Math.min(99, l.qty);
+      saveDrafts();
+      paintLines(); paintCatalog();
+    }));
+    $$('.pl-n', box).forEach((b) => b.addEventListener('click', () => lineSheet(b.dataset.k)));
+    paintFoot();
+  }
+  /** Apuntar un plato de un toque: si ya está apuntado (sin nota), suma uno. */
+  function quickAdd(line) {
+    const d = draft();
+    const same = d.find((l) => l.kind === line.kind && l.dish === line.dish && l.special === line.special && !l.note && l.course === line.course);
+    if (same) same.qty = Math.min(99, same.qty + 1);
+    else d.push({ ...line, qty: 1, note: '', hold: line.course === 3, key: uid('l') });
+    saveDrafts();
+    paintLines();
+    const li = $(`#nt-lines [data-key="${(same || d[d.length - 1]).key}"]`);
+    if (li) li.classList.add('pop');
+  }
+  function paintCatalog() {
+    const box = $('#nt-menu');
+    if (!box) return;
+    const c = S.carta;
+    const q = norm(S.notaQ.trim());
+    const counts = {};
+    notaDraft().forEach((l) => {
+      const k = l.kind === 'dish' ? 'd' + l.dish : (l.kind === 'special' && l.special !== undefined ? 's' + l.special : '');
+      if (k) counts[k] = (counts[k] || 0) + l.qty;
+    });
+    const al = (list) => (list && list.length ? ` <span class="al">${list.map((k) => esc((c.allergens.find((a) => a.key === k) || { abbr: k }).abbr)).join(' ')}</span>` : '');
+    const row = (attrs, name, price, k = '', extra = '') => `<button type="button" class="pm" ${attrs}><span class="pm-c">${counts[k] ? counts[k] : ''}</span><span class="pm-n">${esc(name)}${extra}</span><span class="pm-p">${price}</span></button>`;
+    const dishRow = (d, cat) => row(`data-dish="${d.id}" data-cid="${cat.id}"`, d.name, euro(d.price), 'd' + d.id, al(d.allergens));
+    const spRow = (s, i) => row(`data-sp="${i}"`, s.name, euro(s.price), 's' + i);
+    const menuRow = (m, i) => row(`data-menu="${i}"`, m.title, euro(m.price), '', ` <small>menú · ${m.courses.length} platos</small>`);
+    const tabs = c.categories.map((x) => ['c' + x.id, x.name]);
+    if (c.menus.length) tabs.push(['menus', 'Menús']);
+    tabs.push(['esp', 'Especiales y otros']);
+    const cats = $('#nt-cats');
+    cats.hidden = !!q;
+    cats.innerHTML = tabs.map(([k, n]) => `<button type="button" role="tab" data-cat="${k}" aria-selected="${S.notaCat === k}">${esc(n)}</button>`).join('');
+    $$('[data-cat]', cats).forEach((b) => b.addEventListener('click', () => { S.notaCat = b.dataset.cat; paintCatalog(); }));
+    let html = '';
+    if (q) {
+      const hits = [];
+      c.categories.forEach((cat) => cat.dishes.forEach((d) => { if (norm(d.name).includes(q)) hits.push(dishRow(d, cat)); }));
+      c.specials.forEach((s, i) => { if (norm(s.name).includes(q)) hits.push(spRow(s, i)); });
+      c.menus.forEach((m, i) => { if (norm(m.title).includes(q)) hits.push(menuRow(m, i)); });
+      html = hits.join('') + row('data-free', `Otro: «${S.notaQ.trim()}»`, 'precio a mano');
+    } else if (S.notaCat === 'menus') {
+      html = c.menus.map(menuRow).join('');
+    } else if (S.notaCat === 'esp') {
+      html = c.specials.map(spRow).join('') + row('data-free', 'Otro plato o bebida', 'precio a mano');
+    } else {
+      const cat = c.categories.find((x) => 'c' + x.id === S.notaCat) || c.categories[0];
+      html = cat && cat.dishes.length ? cat.dishes.map((d) => dishRow(d, cat)).join('') : '<p class="empty">La carta está vacía.</p>';
+    }
+    box.innerHTML = html;
+    const need = () => { if (S.nota) return true; toast('Primero elige la mesa', 'err'); $('#nt-mesa').focus(); return false; };
+    const done = () => { if (S.notaQ) { S.notaQ = ''; $('#nt-q').value = ''; paintCatalog(); } };
+    $$('[data-dish]', box).forEach((b) => b.addEventListener('click', () => {
+      if (!need()) return;
+      const cat = c.categories.find((x) => x.id === Number(b.dataset.cid));
+      const d = cat.dishes.find((x) => x.id === Number(b.dataset.dish));
+      quickAdd({ kind: 'dish', dish: d.id, name: d.name, price: d.price, course: cat.course, allergens: d.allergens, barra: cat.barra });
+      done(); paintCatalog();
+    }));
+    $$('[data-sp]', box).forEach((b) => b.addEventListener('click', () => {
+      if (!need()) return;
+      const s = c.specials[Number(b.dataset.sp)];
+      quickAdd({ kind: 'special', special: Number(b.dataset.sp), name: s.name, price: s.price, course: s.course });
+      done(); paintCatalog();
+    }));
+    $$('[data-menu]', box).forEach((b) => b.addEventListener('click', () => { if (need()) { addMenu(c.menus[Number(b.dataset.menu)]); done(); } }));
+    const fr = $('[data-free]', box);
+    if (fr) fr.addEventListener('click', () => { if (need()) { addLine({ kind: 'special', name: S.notaQ.trim(), price: 0, course: 2, free: true }); done(); } });
+  }
+  /** Tocar una línea apuntada: cantidad, pase, nota para la cocina, esperar o quitarla. */
+  function lineSheet(key) {
+    const l = draft().find((x) => x.key === key);
+    if (!l) return;
+    openSheet(l.name, `
+      <form class="form" id="ln-f" novalidate>
+        ${l.detail ? `<p class="help">${esc(l.detail)}</p>` : ''}
+        <div class="row"><span class="field">Cantidad ${stepper('qty', l.qty)}</span></div>
+        ${l.kind === 'menu' ? '' : courseChips(l.course)}
+        ${noteField(l.note)}
+        ${l.kind === 'menu' ? '' : `<label class="switch-row">Esperar: la cocina no lo empieza hasta que lo marches <span class="sw"><input type="checkbox" name="hold" ${l.hold ? 'checked' : ''}><span></span></span></label>`}
+        <div class="actions"><button class="btn btn-main" type="submit">Guardar</button><button class="btn btn-danger" type="button" data-del>Quitar</button></div>
+      </form>`, (body) => {
+      const f = $('#ln-f', body);
+      wireStepper(f); wireNotes(f);
+      $('[data-del]', f).addEventListener('click', () => {
+        S.drafts[notaDKey()] = draft().filter((x) => x.key !== key);
+        saveDrafts(); closeSheet(); paintLines(); paintCatalog();
+      });
+      f.addEventListener('submit', (e) => {
+        e.preventDefault();
+        l.qty = Number($('output', f).textContent);
+        l.note = f.note.value.trim();
+        if (f.course) l.course = Number(f.course.value);
+        if (f.hold) l.hold = f.hold.checked;
+        saveDrafts(); closeSheet(); paintLines(); paintCatalog();
+      });
+    });
+  }
+  function paintSent() {
+    const box = $('#nt-sent');
+    if (!box) return;
+    const o = notaOrder();
+    const live = o ? o.items.filter((i) => i.status !== 'anulado') : [];
+    if (!live.length) { box.innerHTML = ''; return; }
+    const open = $('details', box) ? $('details', box).open : false;
+    box.innerHTML = `<details class="pad-sent"${open ? ' open' : ''}><summary>Ya enviado · ${qtyOf(live)} plato(s)</summary>
+      <ul>${live.map((i) => `<li><b>${i.qty}</b><span>${esc(i.name)}${i.note ? ` <small class="nota">${esc(i.note)}</small>` : ''}</span><span class="st st-${i.status}">${ST[i.status]}</span></li>`).join('')}</ul>
+      <button class="btn btn-quiet btn-sm" type="button" data-ped>Ver pedido completo: marchar, servir, cuenta…</button></details>`;
+    $('[data-ped]', box).addEventListener('click', () => { S.orderId = o.id; go('pedido'); });
+  }
+  function paintFoot() {
+    const box = $('#nt-foot');
+    if (!box) return;
+    const d = notaDraft();
+    const n = qtyOf(d);
+    const o = notaOrder();
+    const sent = o ? o.items.filter((i) => i.status !== 'anulado' && i.status !== 'pendiente').reduce((a, i) => a + i.price * i.qty, 0) : 0;
+    box.innerHTML = `<span class="pad-tot"><small>${n ? `${n} por enviar` : 'Nada por enviar'}</small><b>${euro(sent + d.reduce((a, l) => a + l.price * l.qty, 0))}</b></span>
+      <button class="btn btn-main" type="button" data-send ${n ? '' : 'disabled'}>Enviar a cocina${n ? ` (${n})` : ''}</button>`;
+    $('[data-send]', box).addEventListener('click', (e) => sendNota(e.currentTarget));
+  }
+  async function sendNota(btn) {
+    if (!notaDraft().length) return;
+    busy(btn, true, 'Enviando…');
+    try {
+      let id = notaOrder() ? notaOrder().id : 0;
+      if (!id) {
+        const t = notaTable();
+        if (!t) throw new Error('Primero elige la mesa');
+        // Como al abrir desde el plano: con su reserva y las mesas juntadas, si están libres
+        const busyIds = new Set(S.st.orders.flatMap((x) => x.tables));
+        const near = resFor(t.id, true);
+        const g = groupOf(t.id);
+        let tables = near ? near.tables : (g ? g.tables : [t.id]);
+        if (!tables.includes(t.id) || tables.some((x) => busyIds.has(x))) tables = [t.id];
+        const o = await api('order_open', { body: { tables, people: S.notaPeople || 0, note: '', res: near && tables === near.tables ? near.id : 0 } });
+        id = o.id;
+        moveDraft(S.nota, id);
+        setNota('o:' + id);
+      }
+      await api('order_add', { body: { id, items: (S.drafts[id] || []).map(toSend) } });
+      S.drafts[id] = [];
+      saveDrafts();
+      toast('Enviado a cocina', 'ok');
+    } catch (err) { toast(err.message, 'err'); }
+    S.rev = '';
+    try { await loadState(true); } catch (e) { /* se reintenta solo */ }
+    if (S.view === 'nota') { fixNota(); paintNotaTop(true); paintLines(); paintCatalog(); paintSent(); }
   }
 
   /* ---------- Vista: Cocina ---------- */
