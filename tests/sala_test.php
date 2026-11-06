@@ -37,9 +37,11 @@ $l = sala_layout();
 ok(count($l['floors']) === 1 && count($l['tables']) === 7, 'plano de ejemplo con una planta y mesas');
 ok(sala_kv_get('layout') === null, 'el plano de ejemplo no se guarda hasta editarlo');
 $l['floors'][] = ['id' => 'f2', 'name' => 'Terraza', 'level' => 1, 'w' => 800, 'h' => 500, 'shape' => [[0, 0], [800, 0], [800, 500], [0, 500]]];
-$l['tables'][] = ['id' => 't7', 'floor' => 'f2', 'kind' => 'mesa', 'name' => 'T1', 'shape' => 'round', 'x' => 50, 'y' => 50, 'w' => 80, 'h' => 80, 'seats' => 8, 'auto' => false];
+$l['tables'][] = ['id' => 't7', 'floor' => 'f2', 'kind' => 'mesa', 'name' => 'T1', 'shape' => 'round', 'x' => 50, 'y' => 50, 'w' => 80, 'h' => 80, 'r' => 30, 'seats' => 8, 'auto' => false];
 $saved = sala_layout_save($l);
 ok($saved['rev'] === 2 && count($saved['floors']) === 2, 'guardar plano con una planta nueva');
+$t7 = array_values(array_filter($saved['tables'], fn($t) => $t['id'] === 't7'))[0];
+ok($t7['r'] === 30, 'el giro de una mesa se guarda');
 $raw = (string)q("SELECT v FROM sala_kv WHERE k = 'layout'")->fetchColumn();
 ok(str_starts_with($raw, ENC_PREFIX) && !str_contains($raw, 'Terraza'), 'el plano se guarda cifrado');
 try { sala_layout_save($l); ok(false, 'guardar con una versión vieja falla'); } catch (ValidationError $e) { ok(true, 'guardar con una versión vieja falla'); }

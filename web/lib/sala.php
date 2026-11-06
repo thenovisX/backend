@@ -231,6 +231,7 @@ function sala_layout_clean(array $in): array
             'shape' => ($t['shape'] ?? '') === 'round' ? 'round' : 'rect',
             'x' => $int($t['x'] ?? 0, 0, $floors[$fid]['w']), 'y' => $int($t['y'] ?? 0, 0, $floors[$fid]['h']),
             'w' => $int($t['w'] ?? 80, 20, 1500), 'h' => $int($t['h'] ?? 80, 20, 1500),
+            'r' => $int($t['r'] ?? 0, -180, 180),
             'seats' => $deco ? 0 : $int($t['seats'] ?? 2, 1, 60),
             'auto' => !$deco && filter_var($t['auto'] ?? true, FILTER_VALIDATE_BOOLEAN),
             'join' => !$deco && filter_var($t['join'] ?? true, FILTER_VALIDATE_BOOLEAN),

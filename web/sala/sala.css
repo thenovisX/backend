@@ -383,3 +383,23 @@ html, body { overflow-x: hidden; }
   .bar { padding-left: 10px; padding-right: 10px; }
   .nav button { padding: 8px 10px; }
 }
+
+/* ---------- Editor: giro y paredes ---------- */
+.rot-stem { stroke: var(--pimenton); stroke-width: 2; pointer-events: none; }
+.rot-h { fill: #fff; stroke: var(--pimenton); stroke-width: 4; cursor: grab; }
+.rot-h:active { cursor: grabbing; }
+.rot-ic { fill: var(--pimenton); font-size: 17px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.ed3 .tb { cursor: grab; }
+.ed3 .tb:active { cursor: grabbing; }
+.ed3 svg { user-select: none; -webkit-user-select: none; touch-action: none; }
+.wall { stroke: transparent; stroke-width: 26; stroke-linecap: round; cursor: move; }
+.wall:hover { stroke: rgba(196, 69, 54, .18); }
+.wall.on { stroke: rgba(196, 69, 54, .3); }
+.wlen { fill: var(--mar); font-size: 18px; font-weight: 700; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 5px; }
+.wlen.on { fill: var(--pimenton); }
+.mid circle { fill: var(--pimenton); fill-opacity: .85; stroke: #fff; stroke-width: 3; }
+.mid text { fill: #fff; font-size: 20px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.mid { cursor: copy; }
+ul.how { margin: 6px 0 12px; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+ul.how li { margin: 3px 0; }
+.rot-step output { min-width: 3.2em; }

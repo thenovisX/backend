@@ -315,7 +315,8 @@
     const s2 = sub !== undefined ? sub : (t.kind === 'mesa' ? `${t.seats} pl.` : '');
     const two = s2 && t.h >= 54;
     const label = Math.min(t.w, t.h) >= 26 ? `<text x="${cx}" y="${two ? cy - fs * 0.32 : cy}" font-size="${fs}">${esc(t.name)}</text>` : '';
-    return `<g class="tb ${cls}" data-t="${t.id}" role="button" tabindex="0" aria-label="${esc((t.kind === 'mesa' ? 'Mesa ' : '') + t.name)}">${chairs(t)}${top}
+    const rot = t.r ? ` transform="rotate(${t.r} ${cx} ${cy})"` : '';
+    return `<g class="tb ${cls}" data-t="${t.id}" role="button" tabindex="0" aria-label="${esc((t.kind === 'mesa' ? 'Mesa ' : '') + t.name)}"><g${rot}>${chairs(t)}${top}</g>
       ${label}
       ${two ? `<text class="s" x="${cx}" y="${cy + fs * 0.62}" font-size="${Math.max(11, fs * 0.45)}">${esc(s2)}</text>` : ''}</g>`;
   }
@@ -1013,7 +1014,7 @@
   async function viewPlano() {
     view().innerHTML = '<div class="spin dark" aria-label="Cargando"></div>';
     try { await loadState(true); } catch (err) { return errBox(err); }
-    S.ed = { l: clone(layout()), dirty: false, mode: 'mesas', sel: null, merge: [], vsel: -1, undo: [], redo: [], zoom: 1, lastKey: '', lastT: 0 };
+    S.ed = { l: clone(layout()), dirty: false, mode: 'mesas', sel: null, merge: [], vsel: -1, wsel: -1, undo: [], redo: [], zoom: 1, lastKey: '', lastT: 0 };
     paintEditor();
   }
   const edFloor = () => { const e = S.ed; let f = e.l.floors.find((x) => x.id === S.floor); if (!f) { f = sortedFloors(e.l)[0]; S.floor = f.id; } return f; };
@@ -1080,7 +1081,7 @@
         + '<p class="help">Toca para ponerlo en el centro, o arrástralo al sitio exacto del plano.</p>';
     } else if (e.mode === 'forma') {
       palette = `<h3>Formas de partida</h3><div class="pal">${Object.keys(SHAPES).map((k) => `<button type="button" class="pal-it" data-preset="${k}">${shapeThumb(k)}<span>${SHAPES[k][0]}</span></button>`).join('')}</div>
-        <p class="help">Elige una forma y luego ajústala: arrastra los puntos blancos (esquinas) y toca un punto rosa (mitad de una pared) para añadir otra esquina.</p>`;
+        <p class="help">Elige una forma de partida y luego ajústala en el plano: arrastra las paredes o las esquinas. La medida de cada pared sale en metros.</p>`;
     } else {
       palette = `<h3>Fusionar mesas</h3><p class="help">Toca en el plano las mesas que quieres juntar para un evento o grupo. Funcionan como una sola para pedidos y reservas.</p>
         <p class="merge-n"><b>${e.merge.length}</b> mesas elegidas${e.merge.length ? ': ' + esc(e.merge.map((id) => (l.tables.find((t) => t.id === id) || {}).name).join(' + ')) : ''}</p>
@@ -1114,9 +1115,9 @@
         </section>
         <aside class="card props" id="props"></aside>
       </div>`;
-    $$('.floors [data-f]').forEach((b) => b.addEventListener('click', () => { S.floor = b.dataset.f; e.sel = null; e.merge = []; e.vsel = -1; paintEditor(); }));
+    $$('.floors [data-f]').forEach((b) => b.addEventListener('click', () => { S.floor = b.dataset.f; e.sel = null; e.merge = []; e.vsel = -1; e.wsel = -1; paintEditor(); }));
     $$('[data-addf]').forEach((b) => b.addEventListener('click', () => addFloor(b.dataset.addf)));
-    $$('[data-mode]').forEach((b) => b.addEventListener('click', () => { e.mode = b.dataset.mode; e.sel = null; e.merge = []; e.vsel = -1; paintEditor(); }));
+    $$('[data-mode]').forEach((b) => b.addEventListener('click', () => { e.mode = b.dataset.mode; e.sel = null; e.merge = []; e.vsel = -1; e.wsel = -1; paintEditor(); }));
     $$('[data-hist]').forEach((b) => b.addEventListener('click', () => undoRedo(b.dataset.hist === 'undo')));
     $$('[data-zoom]').forEach((b) => b.addEventListener('click', () => {
       const d = Number(b.dataset.zoom);
@@ -1234,6 +1235,34 @@
   }
   const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
+  /** Giro de una mesa (de -180° a 180°). Un giro recto (90°, 180°) se guarda cambiando ancho por fondo, sin ángulo,
+   *  para que las reservas automáticas sigan viendo bien qué mesas quedan juntas. */
+  function normRot(t) {
+    let r = Math.round(t.r || 0) % 360;
+    if (r > 180) r -= 360;
+    if (r <= -180) r += 360;
+    if (r % 90 === 0 && r !== 0) {
+      if (Math.abs(r) === 90) {
+        const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+        [t.w, t.h] = [t.h, t.w];
+        t.x = Math.max(0, Math.round(cx - t.w / 2)); t.y = Math.max(0, Math.round(cy - t.h / 2));
+      }
+      r = 0;
+    }
+    t.r = r;
+    if (!t.r) delete t.r;
+  }
+  const rad = (d) => (d * Math.PI) / 180;
+  const rotV = (x, y, d) => [x * Math.cos(rad(d)) - y * Math.sin(rad(d)), x * Math.sin(rad(d)) + y * Math.cos(rad(d))];
+  const meters = (v) => (v / 100).toLocaleString('es-ES', { maximumFractionDigits: 2 }) + ' m';
+  /** La planta crece (o encoge) para que quepan la forma y las mesas. */
+  function fitFloor(f) {
+    const ts = S.ed.l.tables.filter((t) => t.floor === f.id);
+    const mx = Math.max(...f.shape.map((q) => q[0]), ...ts.map((t) => t.x + t.w));
+    const my = Math.max(...f.shape.map((q) => q[1]), ...ts.map((t) => t.y + t.h));
+    f.w = Math.max(300, Math.min(4000, Math.ceil(mx / 50) * 50));
+    f.h = Math.max(300, Math.min(4000, Math.ceil(my / 50) * 50));
+  }
   function paintEdMap(guides = []) {
     const e = S.ed;
     const box = $('#ed-map');
@@ -1249,13 +1278,28 @@
     let extra = guides.map(([k, v]) => (k === 'x' ? `<line class="guide" x1="${v}" y1="-40" x2="${v}" y2="${f.h + 40}"/>` : `<line class="guide" x1="-40" y1="${v}" x2="${f.w + 40}" y2="${v}"/>`)).join('');
     if (e.mode === 'mesas' && selT) {
       const c = [['nw', selT.x, selT.y], ['ne', selT.x + selT.w, selT.y], ['sw', selT.x, selT.y + selT.h], ['se', selT.x + selT.w, selT.y + selT.h]];
-      extra += `<rect class="sel-box" x="${selT.x - 6}" y="${selT.y - 6}" width="${selT.w + 12}" height="${selT.h + 12}" rx="8"/>`
-        + c.map(([k, x, y]) => `<circle class="hnd h-${k}" data-h="${k}" cx="${x}" cy="${y}" r="13"/>`).join('')
-        + `<text class="dim" x="${selT.x + selT.w / 2}" y="${selT.y + selT.h + 34}">${selT.w} × ${selT.h}</text>`;
+      const cx = selT.x + selT.w / 2, cy = selT.y + selT.h / 2, r = selT.r || 0;
+      const reach = Math.abs(rotV(selT.w / 2, selT.h / 2, r)[1]) + Math.abs(rotV(selT.w / 2, -selT.h / 2, r)[1]);
+      extra += `<g transform="rotate(${r} ${cx} ${cy})"><rect class="sel-box" x="${selT.x - 6}" y="${selT.y - 6}" width="${selT.w + 12}" height="${selT.h + 12}" rx="8"/>`
+        + `<line class="rot-stem" x1="${cx}" y1="${selT.y - 6}" x2="${cx}" y2="${selT.y - 40}"/><circle class="rot-h" data-rot-h="1" cx="${cx}" cy="${selT.y - 46}" r="14"/>`
+        + `<text class="rot-ic" x="${cx}" y="${selT.y - 40}">⟳</text>`
+        + c.map(([k, x, y]) => `<circle class="hnd h-${k}" data-h="${k}" cx="${x}" cy="${y}" r="13"/>`).join('') + '</g>'
+        + `<text class="dim" x="${cx}" y="${cy + Math.max(reach / 2, selT.h / 2) + 34}">${selT.w} × ${selT.h}${r ? ` · ${r}°` : ''}</text>`;
     }
     if (e.mode === 'forma') {
       const p = f.shape;
-      extra += p.map((a, i) => { const b = p[(i + 1) % p.length]; return `<circle class="mid" data-mid="${i}" cx="${(a[0] + b[0]) / 2}" cy="${(a[1] + b[1]) / 2}" r="13"/>`; }).join('')
+      const ccw = p.reduce((a, q, i) => { const b = p[(i + 1) % p.length]; return a + (q[0] * b[1] - b[0] * q[1]); }, 0) < 0;
+      extra += p.map((a, i) => {
+        const b = p[(i + 1) % p.length];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        // Normal hacia fuera de la sala, para poner la medida por fuera de la pared
+        let nx = (b[1] - a[1]) / len, ny = -(b[0] - a[0]) / len;
+        if (ccw) { nx = -nx; ny = -ny; }
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        return `<line class="wall${e.wsel === i ? ' on' : ''}" data-wall="${i}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`
+          + `<text class="wlen${e.wsel === i ? ' on' : ''}" x="${mx + nx * 38}" y="${my + ny * 30 + 6}">${meters(len)}</text>`;
+      }).join('')
+        + p.map((a, i) => { const b = p[(i + 1) % p.length]; return `<g class="mid" data-mid="${i}"><circle cx="${(a[0] + b[0]) / 2}" cy="${(a[1] + b[1]) / 2}" r="12"/><text x="${(a[0] + b[0]) / 2}" y="${(a[1] + b[1]) / 2 + 6}">+</text></g>`; }).join('')
         + p.map((a, i) => `<circle class="vx${e.vsel === i ? ' on' : ''}" data-vx="${i}" cx="${a[0]}" cy="${a[1]}" r="17"/>`).join('');
     }
     if (!ts.length && e.mode === 'mesas') extra += `<text class="hint" x="${f.w / 2}" y="${f.h / 2}">Arrastra aquí mesas desde la izquierda</text>`;
@@ -1272,6 +1316,7 @@
     wireEditor(svg, f);
   }
   function svgPt(svg, ev) {
+    svg = $('#ed-map svg') || svg;
     const p = svg.createSVGPoint();
     p.x = ev.clientX; p.y = ev.clientY;
     return p.matrixTransform(svg.getScreenCTM().inverse());
@@ -1291,28 +1336,126 @@
     }
     return guides;
   }
+  /** Pega una esquina de la sala a la vertical u horizontal de sus vecinas (paredes rectas). */
+  function alignVertex(f, i, pt) {
+    const n = f.shape.length;
+    const g = [];
+    [f.shape[(i + n - 1) % n], f.shape[(i + 1) % n]].forEach((q) => {
+      if (Math.abs(q[0] - pt[0]) <= GUIDE * 2) { pt[0] = q[0]; g.push(['x', q[0]]); }
+      if (Math.abs(q[1] - pt[1]) <= GUIDE * 2) { pt[1] = q[1]; g.push(['y', q[1]]); }
+    });
+    return g;
+  }
+  let edDrag = null;
+  let edLast = { k: '', t: 0 };
+  /** true si es el segundo toque seguido sobre lo mismo (doble clic). */
+  function dbl(k) { const now = Date.now(); const r = edLast.k === k && now - edLast.t < 450; edLast = r ? { k: '', t: 0 } : { k, t: now }; return r; }
+  let edRaf = 0;
+  let edGuides = [];
+  function edRedraw() { if (edRaf) return; edRaf = requestAnimationFrame(() => { edRaf = 0; paintEdMap(edGuides); }); }
+  function edFirst() { if (edDrag && !edDrag.snap) { snapshot(); edDrag.snap = true; } }
+  function edMove(ev) {
+    const d = edDrag;
+    if (!d || !S.ed || S.view !== 'plano') return;
+    ev.preventDefault();
+    const f = d.f;
+    const p = svgPt(null, ev);
+    if (d.kind === 'move') {
+      const x = Math.max(0, Math.min(f.w - 20, snap(p.x - d.ox)));
+      const y = Math.max(0, Math.min(f.h - 20, snap(p.y - d.oy)));
+      if (x !== d.lx || y !== d.ly) {
+        edFirst();
+        d.lx = x; d.ly = y;
+        d.t.x = x; d.t.y = y;
+        edGuides = alignTo(d.t, f);
+        markDirty(); edRedraw();
+      }
+    } else if (d.kind === 'size') {
+      // Se trabaja en los ejes de la mesa (por si está girada); la esquina contraria no se mueve
+      const t = d.t, r = t.r || 0;
+      const sx = d.k.includes('w') ? -1 : 1, sy = d.k.includes('n') ? -1 : 1;
+      const [lx, ly] = rotV(p.x - d.ax, p.y - d.ay, -r);
+      let w = Math.max(30, snap(lx * sx)), h = Math.max(20, snap(ly * sy));
+      if (ev.shiftKey) h = w;
+      const [ox, oy] = rotV((sx * w) / 2, (sy * h) / 2, r);
+      const x = Math.max(0, Math.round(d.ax + ox - w / 2)), y = Math.max(0, Math.round(d.ay + oy - h / 2));
+      if (w !== t.w || h !== t.h || x !== t.x || y !== t.y) {
+        edFirst();
+        Object.assign(t, { w, h, x, y });
+        markDirty(); edRedraw();
+      }
+    } else if (d.kind === 'rot') {
+      const t = d.t;
+      let a = (Math.atan2(p.y - d.cy, p.x - d.cx) * 180) / Math.PI + 90;
+      a = ((a + 540) % 360) - 180;
+      // De 5 en 5 grados, y se queda recto (0°, 90°…) si estás cerca. Con Mayúsculas, giro libre.
+      if (!ev.shiftKey) {
+        a = Math.round(a / 5) * 5;
+        const q = Math.round(a / 45) * 45;
+        if (Math.abs(a - q) <= 5) a = q;
+      } else a = Math.round(a);
+      if (a !== (t.r || 0)) { edFirst(); t.r = a; markDirty(); edRedraw(); }
+    } else if (d.kind === 'vx') {
+      const pt = [Math.max(0, Math.min(4000, snap(p.x))), Math.max(0, Math.min(4000, snap(p.y)))];
+      edGuides = alignVertex(f, d.i, pt);
+      edFirst();
+      f.shape[d.i] = pt; markDirty(); edRedraw();
+    } else if (d.kind === 'wall') {
+      // La pared entera se desplaza hacia dentro o hacia fuera, sin torcerse
+      const k = snap((p.x - d.p0.x) * d.nx + (p.y - d.p0.y) * d.ny);
+      if (k === d.lk) return;
+      d.lk = k;
+      edFirst();
+      const n = f.shape.length;
+      const mv = (q) => [Math.max(0, Math.min(4000, Math.round(q[0] + d.nx * k))), Math.max(0, Math.min(4000, Math.round(q[1] + d.ny * k)))];
+      f.shape[d.i] = mv(d.a0); f.shape[(d.i + 1) % n] = mv(d.b0);
+      markDirty(); edRedraw();
+    }
+  }
+  function edEnd() {
+    const d = edDrag;
+    if (!d) return;
+    edDrag = null; edGuides = [];
+    if (!S.ed || S.view !== 'plano') return;
+    if (d.kind === 'rot' && d.snap) normRot(d.t);
+    if ((d.kind === 'vx' || d.kind === 'wall') && d.snap) fitFloor(d.f);
+    paintEdMap(); paintProps();
+  }
+  window.addEventListener('pointermove', edMove, { passive: false });
+  window.addEventListener('pointerup', edEnd);
+  window.addEventListener('pointercancel', edEnd);
   function wireEditor(svg, f) {
     const e = S.ed;
-    let drag = null;
-    let raf = 0;
-    let guides = [];
-    const redraw = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; paintEdMap(guides); }); };
-    const first = () => { if (drag && !drag.snap) { snapshot(); drag.snap = true; } };
+    svg.addEventListener('dragstart', (ev) => ev.preventDefault());
     svg.addEventListener('pointerdown', (ev) => {
+      if (ev.button > 0) return;
       const p = svgPt(svg, ev);
       const tEl = ev.target.closest('[data-t]');
+      let drag = null;
       if (e.mode === 'forma') {
         const vx = ev.target.closest('[data-vx]');
         const mid = ev.target.closest('[data-mid]');
+        const wall = ev.target.closest('[data-wall]');
+        e.wsel = -1;
+        if (vx && dbl('vx' + vx.dataset.vx)) {
+          if (f.shape.length > 3) { snapshot(); f.shape.splice(Number(vx.dataset.vx), 1); markDirty(); toast('Esquina quitada'); }
+          e.vsel = -1; paintEdMap(); paintProps(); return;
+        }
         if (vx) { e.vsel = Number(vx.dataset.vx); drag = { kind: 'vx', i: e.vsel }; }
         else if (mid) {
           snapshot();
           const i = Number(mid.dataset.mid);
           f.shape.splice(i + 1, 0, [snap(p.x), snap(p.y)]);
           e.vsel = i + 1; drag = { kind: 'vx', i: i + 1, snap: true };
-          markDirty(); redraw();
-        } else { e.vsel = -1; redraw(); }
-        paintProps();
+          markDirty();
+        } else if (wall) {
+          const i = Number(wall.dataset.wall);
+          const a = f.shape[i], b = f.shape[(i + 1) % f.shape.length];
+          const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+          e.vsel = -1; e.wsel = i;
+          drag = { kind: 'wall', i, a0: a.slice(), b0: b.slice(), nx: (b[1] - a[1]) / len, ny: -(b[0] - a[0]) / len, p0: p, lk: 0 };
+        } else e.vsel = -1;
+        paintProps(); edRedraw();
       } else if (e.mode === 'fusionar') {
         if (tEl) {
           const t = e.l.tables.find((x) => x.id === tEl.dataset.t);
@@ -1322,63 +1465,35 @@
           }
         }
         return;
+      } else if (ev.target.closest('[data-rot-h]') && e.sel && e.sel.t) {
+        const t = e.l.tables.find((x) => x.id === e.sel.t);
+        drag = { kind: 'rot', t, cx: t.x + t.w / 2, cy: t.y + t.h / 2 };
       } else if (ev.target.closest('[data-h]') && e.sel && e.sel.t) {
         const t = e.l.tables.find((x) => x.id === e.sel.t);
         const k = ev.target.closest('[data-h]').dataset.h;
-        // La esquina contraria queda quieta
-        drag = { kind: 'size', t, k, ax: k.includes('w') ? t.x + t.w : t.x, ay: k.includes('n') ? t.y + t.h : t.y };
+        // Esquina contraria (en el plano, teniendo en cuenta el giro): queda quieta
+        const sx = k.includes('w') ? -1 : 1, sy = k.includes('n') ? -1 : 1;
+        const [ox, oy] = rotV((-sx * t.w) / 2, (-sy * t.h) / 2, t.r || 0);
+        drag = { kind: 'size', t, k, ax: t.x + t.w / 2 + ox, ay: t.y + t.h / 2 + oy };
+      } else if (tEl && dbl('t' + tEl.dataset.t)) {
+        const t = e.l.tables.find((x) => x.id === tEl.dataset.t);
+        ev.preventDefault();
+        setTimeout(() => {
+          const n = prompt('Nombre', t.name);
+          if (n === null || !n.trim()) return;
+          snapshot(); t.name = n.trim().slice(0, 24); markDirty(); paintEdMap(); paintProps();
+        }, 0);
+        return;
       } else if (tEl) {
         const t = e.l.tables.find((x) => x.id === tEl.dataset.t);
         e.sel = { t: t.id };
-        drag = { kind: 'move', t, ox: p.x - t.x, oy: p.y - t.y };
-        paintProps(); redraw();
+        drag = { kind: 'move', t, ox: p.x - t.x, oy: p.y - t.y, lx: t.x, ly: t.y };
+        paintProps(); edRedraw();
       } else {
         e.sel = null;
-        paintProps(); redraw();
+        paintProps(); edRedraw();
       }
-      if (drag) { svg.setPointerCapture(ev.pointerId); ev.preventDefault(); }
-    });
-    svg.addEventListener('pointermove', (ev) => {
-      if (!drag) return;
-      const p = svgPt(svg, ev);
-      if (drag.kind === 'move') {
-        const x = Math.max(0, Math.min(f.w - 20, snap(p.x - drag.ox)));
-        const y = Math.max(0, Math.min(f.h - 20, snap(p.y - drag.oy)));
-        if (x !== drag.lx || y !== drag.ly) {
-          first();
-          drag.lx = x; drag.ly = y;
-          drag.t.x = x; drag.t.y = y;
-          guides = alignTo(drag.t, f);
-          markDirty(); redraw();
-        }
-      } else if (drag.kind === 'size') {
-        const px = snap(p.x), py = snap(p.y);
-        const w = Math.max(30, Math.abs(px - drag.ax)), h = Math.max(20, Math.abs(py - drag.ay));
-        const x = drag.k.includes('w') ? drag.ax - w : drag.ax, y = drag.k.includes('n') ? drag.ay - h : drag.ay;
-        if (w !== drag.t.w || h !== drag.t.h || x !== drag.t.x || y !== drag.t.y) {
-          first();
-          Object.assign(drag.t, { w, h, x: Math.max(0, x), y: Math.max(0, y) });
-          // Las mesas redondas siguen siendo redondas si se arrastra con Mayúsculas
-          if (ev.shiftKey) drag.t.h = drag.t.w;
-          markDirty(); redraw();
-        }
-      } else if (drag.kind === 'vx') {
-        const pt = [Math.max(0, Math.min(f.w, snap(p.x))), Math.max(0, Math.min(f.h, snap(p.y)))];
-        first();
-        f.shape[drag.i] = pt; markDirty(); redraw();
-      }
-    });
-    const end = () => { if (drag) { drag = null; guides = []; paintEdMap(); paintProps(); } };
-    svg.addEventListener('pointerup', end);
-    svg.addEventListener('pointercancel', end);
-    // Doble clic en una mesa: cambiarle el nombre
-    svg.addEventListener('dblclick', (ev) => {
-      const tEl = ev.target.closest('[data-t]');
-      if (!tEl || e.mode !== 'mesas') return;
-      const t = e.l.tables.find((x) => x.id === tEl.dataset.t);
-      const n = prompt('Nombre', t.name);
-      if (n === null || !n.trim()) return;
-      snapshot(); t.name = n.trim().slice(0, 24); markDirty(); paintEdMap(); paintProps();
+      if (drag) { drag.f = f; edDrag = drag; ev.preventDefault(); }
     });
   }
   document.addEventListener('keydown', (ev) => {
@@ -1394,6 +1509,7 @@
     const d = ev.shiftKey ? 50 : SNAP;
     const mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[ev.key];
     if (mv) { ev.preventDefault(); snapshot('key-' + t.id); t.x = Math.max(0, t.x + mv[0]); t.y = Math.max(0, t.y + mv[1]); markDirty(); paintEdMap(); }
+    if (!mod && ev.key.toLowerCase() === 'r') { ev.preventDefault(); snapshot('rot-' + t.id); t.r = (t.r || 0) + (ev.shiftKey ? -15 : 15); normRot(t); markDirty(); paintEdMap(); paintProps(); }
     if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteTable(t); }
     if (ev.key === 'Escape') { e.sel = null; paintEdMap(); paintProps(); }
   });
@@ -1424,10 +1540,32 @@
     const g = e.sel && e.sel.g ? e.l.groups.find((x) => x.id === e.sel.g) : null;
     const sw = (name, label, on) => `<label class="switch-row">${label} <span class="sw"><input type="checkbox" name="${name}" ${on ? 'checked' : ''}><span></span></span></label>`;
     if (e.mode === 'forma') {
-      box.innerHTML = `<h3>Forma de «${esc(f.name)}»</h3><p class="help">${f.shape.length} esquinas.${e.vsel >= 0 ? ' Esquina elegida.' : ' Toca una esquina para elegirla.'}</p>
-        <button class="btn btn-danger btn-sm" type="button" data-delv ${e.vsel < 0 || f.shape.length <= 3 ? 'disabled' : ''}>Quitar esquina</button>
+      const n = f.shape.length;
+      const wa = e.wsel >= 0 ? f.shape[e.wsel] : null, wb = wa ? f.shape[(e.wsel + 1) % n] : null;
+      const wl = wa ? Math.round(Math.hypot(wb[0] - wa[0], wb[1] - wa[1])) : 0;
+      box.innerHTML = `<h3>Forma de «${esc(f.name)}»</h3>
+        <ul class="how">
+          <li><b>Mover una pared:</b> arrástrala hacia dentro o hacia fuera.</li>
+          <li><b>Mover una esquina:</b> arrastra el punto blanco. Se pone recta sola.</li>
+          <li><b>Nueva esquina:</b> toca el <b>+</b> en medio de una pared.</li>
+          <li><b>Quitar esquina:</b> doble clic en ella.</li>
+        </ul>
+        ${wa ? `<form class="form" id="wp" novalidate><label>Largo de esta pared (m) <input name="len" type="number" min="0.5" max="40" step="0.1" value="${(wl / 100).toFixed(2)}"></label></form>` : ''}
+        ${e.vsel >= 0 ? `<button class="btn btn-danger btn-sm" type="button" data-delv ${n <= 3 ? 'disabled' : ''}>Quitar esta esquina</button>` : ''}
+        <p class="stat">${n} esquinas · ${meters(Math.max(...f.shape.map((q) => q[0])) - Math.min(...f.shape.map((q) => q[0])))} × ${meters(Math.max(...f.shape.map((q) => q[1])) - Math.min(...f.shape.map((q) => q[1])))}</p>
         ${floorForm(f)}`;
-      $('[data-delv]', box).addEventListener('click', () => { snapshot(); f.shape.splice(e.vsel, 1); e.vsel = -1; markDirty(); paintEdMap(); paintProps(); });
+      const dv = $('[data-delv]', box);
+      if (dv) dv.addEventListener('click', () => { snapshot(); f.shape.splice(e.vsel, 1); e.vsel = -1; markDirty(); paintEdMap(); paintProps(); });
+      const wp = $('#wp', box);
+      if (wp) wp.addEventListener('change', () => {
+        const L = Math.round((Number(wp.len.value) || 0) * 100);
+        if (L < 50 || !wl) return;
+        snapshot();
+        // Se alarga o acorta moviendo la esquina final de la pared
+        const j = (e.wsel + 1) % n;
+        f.shape[j] = [Math.max(0, Math.min(4000, Math.round(wa[0] + ((wb[0] - wa[0]) * L) / wl))), Math.max(0, Math.min(4000, Math.round(wa[1] + ((wb[1] - wa[1]) * L) / wl)))];
+        fitFloor(f); markDirty(); paintEdMap(); paintProps();
+      });
       wireFloorForm(box, f);
       return;
     }
@@ -1443,8 +1581,10 @@
           </div></div>
           <div class="field">Tamaño<div class="chips">${SIZES.map(([n, k]) => `<button type="button" class="chip-btn" data-size="${k}">${n}</button>`).join('')}</div>
             <span class="help">${t.w} × ${t.h}. También puedes arrastrar las esquinas rojas del plano.</span></div>
+          <div class="field">Giro <div class="big-step rot-step"><button type="button" data-turn="-15" aria-label="Girar 15° a la izquierda">⟲</button><output>${t.r || 0}°</output><button type="button" data-turn="15" aria-label="Girar 15° a la derecha">⟳</button></div>
+            <span class="help">O arrastra el punto redondo de encima de la mesa. Tecla R: girar.</span>
+            <div class="chips"><button type="button" class="chip-btn" data-turn="90">Girar 90°</button>${t.r ? '<button type="button" class="chip-btn" data-turn="0">Poner recta</button>' : ''}</div></div>
           <div class="tool-row">
-            <button class="btn btn-quiet" type="button" data-rot title="Girar 90°">⟳ Girar</button>
             <button class="btn btn-quiet" type="button" data-dup title="Duplicar (Ctrl+D)">⧉ Duplicar</button>
             <button class="btn btn-danger" type="button" data-del title="Borrar (Supr)">Borrar</button>
           </div>
@@ -1479,7 +1619,13 @@
         t.w = Math.max(30, snap(w)); t.h = Math.max(20, snap(h));
         done();
       }));
-      $('[data-rot]', fm).addEventListener('click', () => { snapshot(); [t.w, t.h] = [t.h, t.w]; done(); });
+      $$('[data-turn]', fm).forEach((b) => b.addEventListener('click', () => {
+        snapshot('rot-' + t.id);
+        const d = Number(b.dataset.turn);
+        t.r = d ? (t.r || 0) + d : 0;
+        normRot(t);
+        done();
+      }));
       $('[data-dup]', fm).addEventListener('click', () => duplicate(t));
       $('[data-del]', fm).addEventListener('click', () => deleteTable(t));
       fm.addEventListener('change', (ev) => {
