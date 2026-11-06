@@ -104,19 +104,19 @@ function login(array $in): array
     $user = str_in($in, 'username', 60, true, 'usuario');
     $pass = (string)($in['password'] ?? '');
 
-    // Fuerza bruta: 10 fallos por IP y 20 por usuario (aunque vengan de muchas IP) cada 15 minutos
-    $byIp = throttle_check('login-ip|' . client_ip(), 10, 900);
-    $byUser = throttle_check('login-user|' . mb_strtolower($user), 20, 900);
+    // Fuerza bruta: 10 fallos por IP y 20 por usuario (aunque vengan de muchas IP) cada 15 minutos.
+    // El intento se apunta ANTES de comprobar la contraseña (throttle_take): mandando cientos de peticiones
+    // a la vez no se prueban más contraseñas de la cuenta.
+    $byIp = throttle_take('login-ip|' . client_ip(), 10, 900);
+    $byUser = throttle_take('login-user|' . mb_strtolower($user), 20, 900);
 
     $u = q('SELECT * FROM users WHERE username = ?', [$user])->fetch();
     if (!pass_verify($pass, $u ? $u['pass_hash'] : null)) {
-        throttle_hit($byIp);
-        throttle_hit($byUser);
         throw new ValidationError('Usuario o contraseña incorrectos');
     }
     if (isset($u['active']) && !(int)$u['active']) throw new ValidationError('Este usuario está desactivado. Habla con el administrador.');
-    throttle_clear($byIp);
-    throttle_clear($byUser);
+    throttle_clear($byIp[0]);
+    throttle_clear($byUser[0]);
     if (pass_needs_rehash($u['pass_hash'])) q('UPDATE users SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $u['id']]);
     q('DELETE FROM tokens WHERE last_used < ? OR created_at < ?', [date('Y-m-d H:i:s', time() - TOKEN_DAYS * 86400), date('Y-m-d H:i:s', time() - TOKEN_MAX_DAYS * 86400)]);
 
@@ -159,11 +159,11 @@ function change_password(array $user, array $in): void
     $cur = (string)($in['current'] ?? '');
     $new = (string)($in['new'] ?? '');
     $u = q('SELECT * FROM users WHERE id = ?', [$user['id']])->fetch();
-    $guard = throttle_check('password-user|' . $user['id'], 5, 900);
+    $guard = throttle_take('password-user|' . $user['id'], 5, 900);
     if (!pass_verify($cur, $u['pass_hash'])) {
-        throttle_hit($guard);
         throw new ValidationError('La contraseña actual no es correcta');
     }
+    throttle_undo($guard);
     if (strlen($new) < 8) throw new ValidationError('La nueva contraseña necesita al menos 8 caracteres');
     q('UPDATE users SET pass_hash = ? WHERE id = ?', [pass_hash($new), $user['id']]);
     audit('admin_cambio_contrasena', 0, 'Usuario del panel: ' . $user['username']);

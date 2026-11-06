@@ -127,17 +127,18 @@ function sala_login(array $in): array
 {
     $user = mb_strtolower(str_in($in, 'username', 60, true, 'usuario'));
     $pass = (string)($in['password'] ?? '');
-    $byIp = throttle_check('sala-ip|' . client_ip(), 10, 900);
-    $byUser = throttle_check('sala-user|' . $user, 20, 900);
+    // El intento se apunta antes de comprobar la contraseña (throttle_take): con muchas peticiones a la vez no se
+    // prueban más de la cuenta. Desde el wifi del local (IP puestas en Preferencias) todos los móviles comparten IP:
+    // ahí el límite por IP es más alto, para que un cliente del wifi no deje sin entrar a los camareros.
+    $byIp = throttle_take('sala-ip|' . client_ip(), mesa_on_local_wifi() ? 60 : 10, 900);
+    $byUser = throttle_take('sala-user|' . $user, 20, 900);
     $u = q('SELECT * FROM sala_users WHERE username = ?', [$user])->fetch();
     if (!pass_verify($pass, $u ? $u['pass_hash'] : null)) {
-        throttle_hit($byIp);
-        throttle_hit($byUser);
         throw new ValidationError('Usuario o contraseña incorrectos');
     }
     if (!(int)$u['active']) throw new ValidationError('Esta cuenta está desactivada. Habla con el encargado.');
-    throttle_clear($byIp);
-    throttle_clear($byUser);
+    throttle_clear($byIp[0]);
+    throttle_clear($byUser[0]);
     if (pass_needs_rehash($u['pass_hash'])) q('UPDATE sala_users SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $u['id']]);
     q('DELETE FROM sala_tokens WHERE last_used < ? OR created_at < ?', [date('Y-m-d H:i:s', time() - TOKEN_DAYS * 86400), date('Y-m-d H:i:s', time() - TOKEN_MAX_DAYS * 86400)]);
     $token = bin2hex(random_bytes(32));
@@ -779,9 +780,14 @@ function sala_order_add(array $u, array $in, bool $guest = false): array
             $m = $menus[(string)($l['menu'] ?? '')] ?? null;
             if (!$m || !$m['on']) throw new ValidationError('Ese menú no está activo');
             $first = true;
+            $seen = [];
             foreach ((array)($l['choices'] ?? []) as $ch) {
+                $ch = (array)$ch;
                 $ci = (int)($ch['c'] ?? -1);
                 $di = (int)($ch['d'] ?? -1);
+                // Un plato por apartado del menú: si no, por el precio de un menú se pedirían todos sus platos
+                if (isset($seen[$ci])) throw new ValidationError('En el menú solo se elige un plato de cada apartado');
+                $seen[$ci] = true;
                 $dish = $m['courses'][$ci]['dishes'][$di] ?? null;
                 if (!$dish) throw new ValidationError('Falta elegir algún plato del menú');
                 $cname = (string)$m['courses'][$ci]['name'];

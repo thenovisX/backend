@@ -191,3 +191,29 @@ Desde la primera auditoría entraron tres módulos nuevos: **Sala y cocina** (#1
 - Camareros y encargados ven las reservas (nombre y notas) de cualquier día en la sala. Es lo esperado para atender, pero si se quiere restringir habría que limitarlo a hoy y mañana.
 - Los tokens de la sala y del panel viven en `localStorage`: la CSP es lo que los protege; no añadir scripts en línea ni de otros dominios.
 - No se ha probado contra MySQL real ni contra la web desplegada (solo en local). Para escanear la web publicada hace falta su dirección y permiso del dueño.
+
+---
+
+# Tercera revisión (6 de noviembre de 2026): todo el proyecto, toma de nota y app de Windows
+
+Se repasa todo lo anterior y lo nuevo desde la segunda revisión: el **editor de sala** (#15), la **toma de nota** en el móvil (#16, aún sin fusionar) y la **app de Windows** para la red del local (rama `claude/app-escritorio-mesas`, aún sin PR). Esta rama parte de la de la segunda revisión (#14, sin fusionar), así que la incluye.
+
+| # | Comprobación | Antes | Severidad | Ahora |
+|---|---|---|---|---|
+| T1 | App de Windows: archivos privados por la red | `escritorio/router.php` bloquea `config.php`, `lib/`, `data/` y los `.sqlite` comparando la URL, pero en Windows la misma ruta se puede escribir de otras formas: `config.php.` o `config.php ` (Windows quita el punto o espacio final), `config.php::$DATA` (flujo de NTFS) o nombres cortos 8.3 (`RESTAU~1.SQL`). Ninguna coincide con la lista ni acaba en `.php`, así que `php -S` serviría el archivo tal cual: **la clave de cifrado de `config.php` o la base de datos entera**, a cualquiera del wifi. No se ha podido probar en Windows (solo en Linux) | **Alta** (si se confirma) | 🔧 Arreglo preparado para la rama de la app (no está en esta rama porque la app aún no está en `main`): rechaza `:`, `~` y puntos o espacios finales, y vuelve a comprobar con la ruta real del disco (`realpath`). Bloquea también los `.log` |
+| T2 | Fuerza bruta con peticiones a la vez | Entrar en el panel, en la sala o en la cuenta de cliente, y las contraseñas al cambiar email o borrar la cuenta, usaban «comprobar y luego apuntar». Probado con 30 intentos a la vez contra la sala: **se comprobaron 18 contraseñas** en vez de 10 | **Media** | ✅ Todos con `throttle_take()` (se apunta antes de comprobar). Mismo ataque: exactamente 10 |
+| T3 | Menús pedidos por QR | El móvil podía mandar varios platos del mismo apartado de un menú (p. ej. tres segundos y dos postres): **todos salían a cocina por el precio de un menú** | **Media** | ✅ Un plato por apartado (móvil y camarero), con prueba automática |
+| T4 | Bloqueo de los camareros desde el wifi | En la web publicada todos los móviles del local comparten IP: 10 contraseñas malas de un cliente del wifi **dejaban sin poder entrar en la sala a todos los camareros** 15 minutos | Baja | ✅ Si el local tiene puestas sus IP (Preferencias de la sala), el límite por IP sube a 60; sigue el de 20 por usuario |
+| T5 | App de Windows: sin cifrar en el wifi | El servidor del PC va por `http://`: contraseñas y sesiones de camareros y del encargado viajan sin cifrar por el wifi, que en un bar suele ser el mismo que usan los clientes para pedir por QR | **Media** | ⏳ Pendiente (ver recomendaciones) |
+| T6 | App de Windows: panel abierto al wifi | El panel completo (carta, ajustes, cuentas) se puede abrir desde cualquier móvil del wifi; solo lo protege la contraseña | Baja | ⏳ Pendiente (ver recomendaciones) |
+| T7 | Toma de nota (#16) | ✅ Todo lo que sale en pantalla pasa por `esc()`; el borrador va en `localStorage` del propio móvil y al enviarlo el servidor vuelve a poner nombres y precios | — | ✅ Sin cambios |
+| T8 | Editor de sala (#15) | ✅ El servidor limita y limpia todo (`sala_layout_clean()`): ids, tamaños, esquinas, nombres; solo el encargado guarda; control de versión para no pisar cambios | — | ✅ Sin cambios |
+| T9 | App de Windows: resto | ✅ `/local/` solo desde el propio PC; instalador sin administrador; PHP descargado con SHA-256; contraseña inicial por variable de entorno (no en la lista de procesos); `install.php` cerrado; firewall solo red local | — | ✅ Sin cambios |
+
+## Pendiente / recomendaciones (tercera revisión)
+
+- **Aplicar el arreglo T1 en la rama de la app** antes de dar el instalador a nadie, y probarlo en Windows: con la app arrancada, `http://127.0.0.1:8080/config.php.` y `http://127.0.0.1:8080/config.php::$DATA` tienen que dar 404.
+- **Sincronización de la app con la web:** no se ha revisado. El código está solo en el PC de desarrollo (no se ha subido a GitHub) y el PC no estaba conectado. Cuando se suba, revisar sobre todo la API de sincronización de la web (protegida con un usuario administrador): que no se pueda usar con una cuenta sin permisos, que los datos que sube la app se validen igual que los del panel y dónde guarda la app esa contraseña.
+- **T5:** lo ideal es un wifi para el personal y otro para los clientes, con el PC en el del personal y los QR desactivados o, si se quieren QR, servir la app con HTTPS (certificado propio del local). Mientras tanto, como mínimo, wifi con contraseña WPA2/WPA3 y no abierta.
+- **T6:** en la app de Windows se podría limitar el panel al propio PC (como `/local/`) o a una lista de IP del personal.
+- La regla del firewall vale en cualquier perfil de red (también «Público»): si el PC es un portátil que se conecta a otros wifis, quitar la regla o cerrar la app fuera del local.

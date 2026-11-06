@@ -100,6 +100,18 @@ for ($i = 0; $i < 6; $i++) err(fn() => mesa_send($s, ['items' => [['kind' => 'di
 ok(str_contains(err(fn() => mesa_send($s, ['items' => [['kind' => 'dish', 'dish' => $dish['id']]]])), 'seguidos'), 'límite de envíos por móvil');
 reset_throttle();
 
+echo "Menús desde el móvil\n";
+reset_throttle();
+menus_store([['id' => 'dia', 'on' => true, 'title' => 'Menú del día', 'price' => 12, 'days' => [], 'note' => '', 'courses' => [
+    ['name' => 'Primero', 'dishes' => [['name' => 'Sopa', 'extra' => 0, 'allergens' => []], ['name' => 'Ensalada', 'extra' => 0, 'allergens' => []]]],
+    ['name' => 'Segundo', 'dishes' => [['name' => 'Pescado', 'extra' => 0, 'allergens' => []], ['name' => 'Carne', 'extra' => 0, 'allergens' => []]]],
+]]]);
+q('DELETE FROM login_attempts');
+$dup = ['kind' => 'menu', 'menu' => 'dia', 'choices' => [['c' => 1, 'd' => 0], ['c' => 1, 'd' => 1], ['c' => 0, 'd' => 0]]];
+ok(str_contains(err(fn() => mesa_send($s, ['items' => [$dup]])), 'un plato de cada apartado'), 'no se piden dos segundos por el precio de un menú');
+$okm = ['kind' => 'menu', 'menu' => 'dia', 'choices' => [['c' => 0, 'd' => 1], ['c' => 1, 'd' => 0]]];
+ok(err(fn() => mesa_send($s, ['items' => [$okm]])) === '', 'un menú normal (un plato por apartado) sí entra');
+
 echo "Avisos al camarero\n";
 mesa_call($s, 'cuenta');
 ok(sala_order_get($o['id'])['call']['type'] === 'cuenta', 'pedir la cuenta sale en el pedido de la sala');

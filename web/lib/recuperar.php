@@ -13,7 +13,7 @@ const RESET_MINUTES = 60;
 /** Límite por IP: 5 peticiones cada 15 minutos (cada una envía un email). */
 function reset_guard(string $kind): void
 {
-    throttle_hit(throttle_check('reset-' . $kind . '|' . client_ip(), 5, 900));
+    throttle_take('reset-' . $kind . '|' . client_ip(), 5, 900);
 }
 
 /** Crea el token (anulando los anteriores de esa cuenta). Devuelve '' si se pidió otro hace menos de 2 minutos. */

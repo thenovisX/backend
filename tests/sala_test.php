@@ -116,6 +116,11 @@ echo "Cuentas\n";
 $tok = sala_login(['username' => 'laura', 'password' => 'secreto123']);
 ok(strlen($tok['token']) === 64, 'entrar con una cuenta de sala');
 try { sala_login(['username' => 'laura', 'password' => 'mal']); ok(false, 'contraseña mala'); } catch (ValidationError $e) { ok(true, 'contraseña mala rechazada'); }
+for ($i = 0; $i < 9; $i++) { try { sala_login(['username' => 'laura', 'password' => 'mal' . $i]); } catch (ValidationError $e) {} }
+$blocked = '';
+try { sala_login(['username' => 'laura', 'password' => 'secreto123']); } catch (ValidationError $e) { $blocked = $e->getMessage(); }
+ok(str_contains($blocked, 'Demasiados'), 'tras 10 fallos desde la misma IP no se prueban más contraseñas (ni la buena)');
+q('DELETE FROM login_attempts');
 ok(!q('SELECT 1 FROM tokens')->fetch(), 'una sesión de sala no es una sesión del panel');
 ok(str_starts_with((string)q("SELECT name FROM sala_users WHERE username = 'laura'")->fetchColumn(), ENC_PREFIX), 'el nombre de la cuenta va cifrado');
 
