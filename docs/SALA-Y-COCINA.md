@@ -43,6 +43,18 @@ Cuando entra una reserva (por la web o apuntada en el panel), se le busca mesa s
 - Un plato enviado se puede marcar como servido o anular (no se cobra).
 - **Cuenta y cerrar mesa**: total, total por persona, imprimir la cuenta y cerrar. «Cobradas hoy» muestra lo cerrado del día y permite reabrir una mesa cerrada por error.
 
+## Tomar nota (bloc de notas para el móvil)
+
+La pestaña **Tomar nota** es la forma rápida de pedir desde el móvil. En un móvil, el camarero entra directamente en ella.
+
+- Arriba hay una lista con todas las mesas: las ocupadas salen con su pedido y las libres, con su próxima reserva si la tienen.
+- Debajo se apuntan los platos como en un bloc: se toca un plato de la carta (o se escribe su nombre) y se suma uno; con **−** y **+** se cambia cuántos.
+- Al tocar una línea se puede poner una nota para la cocina, cambiar el pase, dejarlo en espera o quitarlo.
+- **Enviar a cocina** lo manda todo de una vez. Si la mesa estaba libre, se abre sola al enviar (con su reserva y sus mesas juntadas, si las hay).
+- Lo ya enviado se ve al final, y **Ver pedido** lleva a la pantalla completa para marchar pases, servir o cobrar.
+
+Lo apuntado y sin enviar se guarda en el propio móvil, así que no se pierde si se cierra la página.
+
 ## Pantalla de cocina
 
 - Comandas ordenadas por hora de llegada (la más antigua primero), con la mesa, personas, camarero, minutos que lleva (verde, ámbar a los 10 min y rojo a los 20), los platos agrupados por pase, alérgenos y notas resaltadas.
