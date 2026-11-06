@@ -438,7 +438,6 @@ function cancel_by_link(int $id, string $token): array
     if (!in_array($state, ['pendiente', 'ya'], true)) return [$state, $r];
     q("UPDATE reservations SET status = 'cancelada', cancel_by = 'cliente', updated_at = ?, seq = ? WHERE id = ?", [now(), next_seq(), $id]);
     sala_on_reservation($id);
-    sala_on_reservation($id);
     $row = q('SELECT customer_id FROM reservations WHERE id = ?', [$id])->fetch();
     audit('reserva_cancelada_cliente', (int)$row['customer_id'], "Reserva #$id cancelada desde el enlace");
     $r = get_reservation($id);

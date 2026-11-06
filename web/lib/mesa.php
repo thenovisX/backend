@@ -26,6 +26,7 @@ const MESA_SENDS_MAX = 6;            // envíos por móvil cada 10 minutos
 const MESA_LINES_MAX = 25;           // líneas por envío
 const MESA_UNITS_MAX = 30;           // platos (contando cantidades) por envío
 const MESA_QTY_MAX = 10;             // de un mismo plato por envío
+const MESA_PIN_TRIES = 12;           // códigos fallados por mesa cada 15 minutos (luego el camarero lo cambia)
 
 /* ---------- Claves de los QR de las mesas ---------- */
 
@@ -93,7 +94,20 @@ function mesa_order_qr(int $orderId): array
     $url = mesa_url($tid, $keys[$tid], $o['pin']);
     $n = (int)q('SELECT COUNT(*) FROM sala_guests WHERE order_id = ?', [$orderId])->fetchColumn();
     return ['pin' => $o['pin'], 'qr' => $o['qr'], 'url' => $url, 'svg' => qr_svg($url, 'QR para pedir desde el móvil'), 'phones' => $n,
-        'enabled' => (bool)sala_prefs()['qr'], 'need_pin' => (bool)sala_prefs()['qr_pin']];
+        'enabled' => (bool)sala_prefs()['qr'], 'need_pin' => (bool)sala_prefs()['qr_pin'], 'locked' => mesa_pin_locked($o)];
+}
+
+/** Contador de códigos fallados de un pedido: va con el código actual, así que cambiar el código lo pone a cero. */
+function mesa_pin_bucket(array $o): string
+{
+    return 'mesa-pin-order|' . $o['id'] . '|' . hash('sha256', $o['pin']);
+}
+
+/** ¿Se ha bloqueado el código de la mesa por demasiados intentos fallidos? (lo ve el camarero) */
+function mesa_pin_locked(array $o): bool
+{
+    $key = hash('sha256', mesa_pin_bucket($o) . '|' . (cfg()['secret'] ?? ''));
+    return (int)q('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND at > ?', [$key, date('Y-m-d H:i:s', time() - 900)])->fetchColumn() >= MESA_PIN_TRIES;
 }
 
 /** Cierra las sesiones de los móviles de un pedido (al cerrar la mesa o cambiar el código). */
@@ -134,6 +148,13 @@ function mesa_remote_ip(): string
     return (string)($_SERVER['REMOTE_ADDR'] ?? '');
 }
 
+/** ¿La petición viene de una de las redes del local que ha puesto el encargado? (false si no ha puesto ninguna) */
+function mesa_on_local_wifi(): bool
+{
+    $ips = sala_prefs()['qr_ips'];
+    return $ips && mesa_ip_ok(['qr_ips' => $ips]);
+}
+
 function mesa_ip_ok(array $prefs): bool
 {
     if (!$prefs['qr_ips']) return true;
@@ -147,14 +168,16 @@ function mesa_ip_ok(array $prefs): bool
 /** La mesa de un QR («t3.clave»). Si la clave no vale, cuenta como intento fallido. */
 function mesa_table(string $k): array
 {
-    $bad = throttle_check('mesa-key|' . client_ip(), 30, 900, 'Demasiados códigos QR no válidos. Espera 15 minutos.');
+    // Las claves tienen 128 bits (no se pueden adivinar): este límite solo frena a quien las prueba en bucle. No se
+    // aplica desde el wifi del local, donde todos los móviles comparten IP y un gracioso dejaría a todos sin pedir.
+    $bad = mesa_on_local_wifi() ? null : throttle_check('mesa-key|' . client_ip(), 30, 900, 'Demasiados códigos QR no válidos. Espera 15 minutos.');
     if (preg_match('/^([td][a-z0-9]{1,16})\.([A-Za-z0-9_-]{22})$/', $k, $m)) {
         $keys = sala_kv_get('qr_keys', []);
         if (is_array($keys) && isset($keys[$m[1]]) && hash_equals((string)$keys[$m[1]], $m[2])) {
             foreach (sala_layout()['tables'] as $t) if ($t['id'] === $m[1] && $t['kind'] === 'mesa') return $t;
         }
     }
-    throttle_hit($bad);
+    if ($bad !== null) throttle_hit($bad);
     throw new ValidationError('Este código QR no vale o se ha cambiado. Pide ayuda al camarero.');
 }
 
@@ -199,15 +222,18 @@ function mesa_join(array $in): array
     if (!$o) throw new ValidationError('La mesa aún no está abierta. Pide al camarero que la abra.');
     if (!$o['qr']) throw new ValidationError('En esta mesa se pide al camarero.');
     if ($prefs['qr_pin']) {
-        $msg = 'Demasiados códigos incorrectos. Espera 15 minutos o pide ayuda al camarero.';
-        $byIp = throttle_check('mesa-pin-ip|' . client_ip(), 20, 900, $msg);
-        $byOrder = throttle_check('mesa-pin-order|' . $o['id'], 12, 900, $msg);
+        $msg = 'Demasiados códigos incorrectos. Espera 15 minutos o pide al camarero que cambie el código de la mesa.';
+        // El intento se apunta ANTES de comprobar el código: así, mandando muchos a la vez no se prueban más de la cuenta.
+        // El límite de la mesa va con su código actual: si alguien lo bloquea a propósito, el camarero pulsa «Cambiar
+        // código» y la mesa vuelve a funcionar. El de la IP no cuenta en el wifi del local (todos comparten IP).
+        $taken = [];
+        if (!mesa_on_local_wifi()) $taken[] = throttle_take('mesa-pin-ip|' . client_ip(), 40, 900, $msg);
+        $taken[] = throttle_take(mesa_pin_bucket($o), MESA_PIN_TRIES, 900, $msg);
         $pin = preg_replace('/\D/', '', (string)($in['pin'] ?? '')) ?? '';
         if ($o['pin'] === '' || !hash_equals($o['pin'], $pin)) {
-            throttle_hit($byIp);
-            throttle_hit($byOrder);
             throw new ValidationError('Ese código no es el de esta mesa. Te lo da el camarero.');
         }
+        foreach ($taken as $tk) throttle_undo($tk); // los aciertos no cuentan
     }
     if ((int)q('SELECT COUNT(*) FROM sala_guests WHERE order_id = ?', [$o['id']])->fetchColumn() >= MESA_GUESTS_MAX) {
         throw new ValidationError('Hay demasiados móviles conectados a esta mesa. Pide al camarero.');
@@ -276,7 +302,15 @@ function mesa_send(array $s, array $in): array
     $msg = 'Has enviado muchos pedidos seguidos. Espera unos minutos o pide al camarero.';
     $byPhone = throttle_check('mesa-send|' . $s['hash'], MESA_SENDS_MAX, 600, $msg);
     $byOrder = throttle_check('mesa-send-order|' . $s['order']['id'], MESA_SENDS_MAX * 3, 600, $msg);
-    sala_order_add(['dname' => 'Móvil (QR)', 'role' => 'qr'], ['id' => $s['order']['id'], 'items' => (array)($in['items'] ?? [])], true);
+    // En el bloqueo: si el camarero cierra la mesa justo a la vez, lo pedido no se cuela en un pedido ya cerrado
+    reservation_lock();
+    try {
+        sala_order_add(['dname' => 'Móvil (QR)', 'role' => 'qr'], ['id' => $s['order']['id'], 'items' => (array)($in['items'] ?? [])], true);
+        db()->commit();
+    } catch (Throwable $e) {
+        if (db()->inTransaction()) db()->rollBack();
+        throw $e;
+    }
     throttle_hit($byPhone);
     throttle_hit($byOrder);
     return mesa_status($s);
@@ -287,10 +321,11 @@ function mesa_call(array $s, string $type): array
 {
     if (!in_array($type, ['camarero', 'cuenta'], true)) throw new ValidationError('Aviso no válido');
     $hit = throttle_check('mesa-call|' . $s['hash'], 5, 600, 'Ya hemos avisado al camarero. Enseguida viene.');
-    $o = sala_order_get($s['order']['id']);
-    $o['call'] = ['type' => $type, 'at' => now()];
-    sala_order_save_data($o['id'], $o);
-    sala_bump();
+    sala_order_mutate($s['order']['id'], function (array $o) use ($type) {
+        if ($o['status'] !== 'abierta') throw new MesaAuthError('La mesa se ha cerrado. Si necesitas algo, pide al camarero.');
+        $o['call'] = ['type' => $type, 'at' => now()];
+        return $o;
+    });
     throttle_hit($hit);
     return mesa_status($s);
 }

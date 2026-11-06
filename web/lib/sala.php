@@ -127,17 +127,18 @@ function sala_login(array $in): array
 {
     $user = mb_strtolower(str_in($in, 'username', 60, true, 'usuario'));
     $pass = (string)($in['password'] ?? '');
-    $byIp = throttle_check('sala-ip|' . client_ip(), 10, 900);
-    $byUser = throttle_check('sala-user|' . $user, 20, 900);
+    // El intento se apunta antes de comprobar la contraseña (throttle_take): con muchas peticiones a la vez no se
+    // prueban más de la cuenta. Desde el wifi del local (IP puestas en Preferencias) todos los móviles comparten IP:
+    // ahí el límite por IP es más alto, para que un cliente del wifi no deje sin entrar a los camareros.
+    $byIp = throttle_take('sala-ip|' . client_ip(), mesa_on_local_wifi() ? 60 : 10, 900);
+    $byUser = throttle_take('sala-user|' . $user, 20, 900);
     $u = q('SELECT * FROM sala_users WHERE username = ?', [$user])->fetch();
     if (!pass_verify($pass, $u ? $u['pass_hash'] : null)) {
-        throttle_hit($byIp);
-        throttle_hit($byUser);
         throw new ValidationError('Usuario o contraseña incorrectos');
     }
     if (!(int)$u['active']) throw new ValidationError('Esta cuenta está desactivada. Habla con el encargado.');
-    throttle_clear($byIp);
-    throttle_clear($byUser);
+    throttle_clear($byIp[0]);
+    throttle_clear($byUser[0]);
     if (pass_needs_rehash($u['pass_hash'])) q('UPDATE sala_users SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $u['id']]);
     q('DELETE FROM sala_tokens WHERE last_used < ? OR created_at < ?', [date('Y-m-d H:i:s', time() - TOKEN_DAYS * 86400), date('Y-m-d H:i:s', time() - TOKEN_MAX_DAYS * 86400)]);
     $token = bin2hex(random_bytes(32));
@@ -677,9 +678,35 @@ function sala_order_open(array $u, array $in): array
 }
 
 /** Cambiar personas, nota o mesas (mover el pedido o juntarle otra mesa). */
+/**
+ * Cambia los datos de un pedido (mesas, personas, nota, código, llamada…) sin pisar lo que otro haya cambiado a la vez:
+ * lee, cambia y guarda dentro del bloqueo. $fn recibe el pedido y lo devuelve cambiado.
+ */
+function sala_order_mutate(int $id, callable $fn): array
+{
+    $pdo = db();
+    $own = !$pdo->inTransaction();
+    if ($own) reservation_lock();
+    try {
+        $o = $fn(sala_order_get($id));
+        sala_order_save_data($o['id'], $o);
+        if ($own) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    sala_bump();
+    return $o;
+}
+
 function sala_order_update(array $u, array $in): array
 {
-    $o = sala_order_get((int)($in['id'] ?? 0));
+    $o = sala_order_mutate((int)($in['id'] ?? 0), fn(array $o) => sala_order_apply($o, $in));
+    return sala_order_get($o['id']);
+}
+
+function sala_order_apply(array $o, array $in): array
+{
     if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
     if (isset($in['tables'])) $o['tables'] = sala_check_tables((array)$in['tables'], $o['id']);
     if (isset($in['people'])) $o['people'] = max(0, min(300, (int)$in['people']));
@@ -691,9 +718,7 @@ function sala_order_update(array $u, array $in): array
         if (!empty($in['new_pin'])) $o['pin'] = mesa_new_pin();
         mesa_kick($o['id']); // los móviles que ya estaban dentro tienen que volver a entrar
     }
-    sala_order_save_data($o['id'], $o);
-    sala_bump();
-    return sala_order_get($o['id']);
+    return $o;
 }
 
 /** Pase por defecto según el nombre de la categoría (el camarero lo puede cambiar). */
@@ -744,8 +769,9 @@ function sala_order_add(array $u, array $in, bool $guest = false): array
         $hold = filter_var($l['hold'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $kind = (string)($l['kind'] ?? 'dish');
         if ($kind === 'dish') {
-            $d = q('SELECT * FROM dishes WHERE id = ?', [(int)($l['dish'] ?? 0)])->fetch();
-            if (!$d) throw new ValidationError('Uno de los platos ya no está en la carta');
+            // Solo platos disponibles: uno agotado o quitado de la carta no se puede pedir (tampoco desde el móvil)
+            $d = q('SELECT * FROM dishes WHERE id = ? AND available = 1', [(int)($l['dish'] ?? 0)])->fetch();
+            if (!$d) throw new ValidationError('Uno de los platos ya no está en la carta o se ha agotado');
             $cid = (int)$d['category_id'];
             $rows[] = ['name' => $d['name'], 'price' => (float)$d['price'], 'qty' => $qty, 'note' => $note, 'kind' => 'dish', 'sub' => '',
                 'allergens' => $d['allergens'] === '' ? [] : explode(',', $d['allergens']),
@@ -755,9 +781,14 @@ function sala_order_add(array $u, array $in, bool $guest = false): array
             $m = $menus[(string)($l['menu'] ?? '')] ?? null;
             if (!$m || !$m['on']) throw new ValidationError('Ese menú no está activo');
             $first = true;
+            $seen = [];
             foreach ((array)($l['choices'] ?? []) as $ch) {
+                $ch = (array)$ch;
                 $ci = (int)($ch['c'] ?? -1);
                 $di = (int)($ch['d'] ?? -1);
+                // Un plato por apartado del menú: si no, por el precio de un menú se pedirían todos sus platos
+                if (isset($seen[$ci])) throw new ValidationError('En el menú solo se elige un plato de cada apartado');
+                $seen[$ci] = true;
                 $dish = $m['courses'][$ci]['dishes'][$di] ?? null;
                 if (!$dish) throw new ValidationError('Falta elegir algún plato del menú');
                 $cname = (string)$m['courses'][$ci]['name'];
@@ -851,17 +882,18 @@ function sala_order_total(array $o): float
 /** Cerrar la mesa: se guarda el total y la mesa queda libre. */
 function sala_order_close(array $u, int $id): array
 {
-    $o = sala_order_get($id);
-    if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
-    $o['total'] = sala_order_total($o);
-    $o['call'] = null;
-    sala_order_save_data($id, $o);
-    // Lo pedido por QR que nadie aceptó no se cobra
-    q("UPDATE sala_items SET status = 'anulado', updated_at = ? WHERE order_id = ? AND status = 'pendiente'", [now(), $id]);
-    q("UPDATE sala_items SET status = 'servido', updated_at = ? WHERE order_id = ? AND status NOT IN ('anulado', 'servido')", [now(), $id]);
-    mesa_kick($id); // los móviles de la mesa ya no pueden pedir
-    q("UPDATE sala_orders SET status = 'cerrada', closed_at = ? WHERE id = ?", [now(), $id]);
-    sala_bump();
+    // Dentro del bloqueo: un móvil que envía o llama justo al cerrar no se cuela en la cuenta ni la pisa
+    sala_order_mutate($id, function (array $o) use ($id) {
+        if ($o['status'] !== 'abierta') throw new ValidationError('Este pedido ya está cerrado');
+        $o['total'] = sala_order_total($o);
+        $o['call'] = null;
+        // Lo pedido por QR que nadie aceptó no se cobra
+        q("UPDATE sala_items SET status = 'anulado', updated_at = ? WHERE order_id = ? AND status = 'pendiente'", [now(), $id]);
+        q("UPDATE sala_items SET status = 'servido', updated_at = ? WHERE order_id = ? AND status NOT IN ('anulado', 'servido')", [now(), $id]);
+        mesa_kick($id); // los móviles de la mesa ya no pueden pedir
+        q("UPDATE sala_orders SET status = 'cerrada', closed_at = ? WHERE id = ?", [now(), $id]);
+        return $o;
+    });
     return sala_order_get($id);
 }
 

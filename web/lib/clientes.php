@@ -80,9 +80,9 @@ function same_origin_only(): void
 }
 
 /** Fallos de contraseña de clientes: 10 por IP cada 15 minutos. */
-function customer_attempts_guard(): string
+function customer_attempts_guard(): array
 {
-    return throttle_check('cliente-ip|' . client_ip(), 10, 900);
+    return throttle_take('cliente-ip|' . client_ip(), 10, 900);
 }
 
 function customer_login_session(int $id): void
@@ -107,7 +107,7 @@ function customer_register(array $in): array
     if (strlen($pass) < 8) throw new ValidationError('La contraseña necesita al menos 8 caracteres');
     if (empty($in['privacy'])) throw new ValidationError('Tienes que aceptar las condiciones de uso y la política de privacidad');
     // Cada alta envía un email: como mucho 5 por IP cada hora (evita usar la web para bombardear buzones)
-    throttle_hit(throttle_check('registro-ip|' . client_ip(), 5, 3600, 'Demasiados intentos. Espera una hora.'));
+    throttle_take('registro-ip|' . client_ip(), 5, 3600, 'Demasiados intentos. Espera una hora.');
     $old = q('SELECT id, verified_at, name FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
     if ($old && $old['verified_at']) {
         // Misma respuesta que un alta nueva, para no revelar qué emails tienen cuenta. Al dueño del email
@@ -158,7 +158,7 @@ function customer_activate(int $id, string $token): bool
 function customer_resend(array $in): void
 {
     $email = mb_strtolower(str_in($in, 'email', 120, true, 'email'));
-    throttle_hit(throttle_check('registro-ip|' . client_ip(), 5, 3600, 'Demasiados intentos. Espera una hora.'));
+    throttle_take('registro-ip|' . client_ip(), 5, 3600, 'Demasiados intentos. Espera una hora.');
     $c = q('SELECT * FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
     // Respuesta igual exista o no la cuenta, para no revelar qué emails están registrados
     if ($c && !$c['verified_at']) send_activation((int)$c['id'], $email, dec($c['name']));
@@ -169,18 +169,16 @@ function customer_login(array $in): array
     $email = mb_strtolower(str_in($in, 'email', 120, true, 'email'));
     $pass = (string)($in['password'] ?? '');
     $ip = customer_attempts_guard();
-    $byEmail = throttle_check('cliente-email|' . email_idx($email), 20, 900);
+    $byEmail = throttle_take('cliente-email|' . email_idx($email), 20, 900);
     $c = q('SELECT * FROM customers WHERE email_idx = ?', [email_idx($email)])->fetch();
     if (!pass_verify($pass, $c ? $c['pass_hash'] : null)) {
-        throttle_hit($ip);
-        throttle_hit($byEmail);
         throw new ValidationError('Email o contraseña incorrectos');
     }
     if (!$c['verified_at']) {
         throw new ValidationError('Tu cuenta aún no está activada. Abre el enlace que te enviamos por email (mira también en spam).');
     }
-    throttle_clear($ip);
-    throttle_clear($byEmail);
+    throttle_clear($ip[0]);
+    throttle_clear($byEmail[0]);
     if (pass_needs_rehash($c['pass_hash'])) q('UPDATE customers SET pass_hash = ? WHERE id = ?', [pass_hash($pass), $c['id']]);
     customer_login_session((int)$c['id']);
     return customer_out(customer_plain($c));
@@ -215,11 +213,11 @@ function customer_update(array $c, array $in): array
     $emailChanged = $email !== $c['email'];
     if ($new !== '' || $emailChanged) {
         $row = q('SELECT pass_hash FROM customers WHERE id = ?', [$c['id']])->fetch();
-        $guard = throttle_check('password-cliente|' . $c['id'], 5, 900);
+        $guard = throttle_take('password-cliente|' . $c['id'], 5, 900);
         if (!pass_verify((string)($in['password'] ?? ''), $row['pass_hash'])) {
-            throttle_hit($guard);
             throw new ValidationError($emailChanged && $new === '' ? 'Para cambiar el email escribe tu contraseña actual (en «Cambiar contraseña»)' : 'La contraseña actual no es correcta');
         }
+        throttle_undo($guard);
     }
     if ($new !== '') {
         if (strlen($new) < 8) throw new ValidationError('La nueva contraseña necesita al menos 8 caracteres');
@@ -239,11 +237,11 @@ function customer_update(array $c, array $in): array
 function customer_delete(array $c, array $in): void
 {
     $row = q('SELECT pass_hash FROM customers WHERE id = ?', [$c['id']])->fetch();
-    $guard = throttle_check('password-cliente|' . $c['id'], 5, 900);
+    $guard = throttle_take('password-cliente|' . $c['id'], 5, 900);
     if (!pass_verify((string)($in['password'] ?? ''), $row['pass_hash'])) {
-        throttle_hit($guard);
         throw new ValidationError('La contraseña no es correcta');
     }
+    throttle_undo($guard);
     // Las reservas se quedan para el restaurante, pero dejan de estar unidas a la cuenta
     q('UPDATE reservations SET customer_id = 0 WHERE customer_id = ?', [$c['id']]);
     q('DELETE FROM customers WHERE id = ?', [$c['id']]);

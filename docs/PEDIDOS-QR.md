@@ -20,8 +20,9 @@ Cada mesa del plano tiene su código QR. Los clientes lo escanean con el móvil,
 | Riesgo | Qué lo impide |
 |---|---|
 | Alguien hace una foto del QR y pide desde casa | Solo se puede pedir con la mesa **abierta por un camarero** y con el **código de esa vez** (nuevo cada vez que se abre la mesa). Al cerrar la mesa se cierran todas las sesiones. |
-| Adivinar el código | 4 cifras con bloqueo: 12 fallos por mesa y 20 por conexión cada 15 minutos. Además el camarero puede **cambiar el código** (saca a los móviles que ya estaban dentro). |
-| Adivinar el QR de otra mesa | Cada QR lleva una clave aleatoria de 128 bits; la de una mesa no sirve para otra. 30 intentos con QR malos por conexión cada 15 minutos. |
+| Adivinar el código | 4 cifras con bloqueo: 12 fallos por mesa y 40 por conexión cada 15 minutos (el intento se apunta antes de comprobarlo, así que mandar muchos a la vez no sirve). Además el camarero puede **cambiar el código** (saca a los móviles que ya estaban dentro). |
+| Bloquear la mesa a propósito probando códigos malos | El bloqueo va con el código de ese momento: el camarero ve el aviso en la ventana del QR y, al pulsar **Cambiar el código**, la mesa vuelve a funcionar. |
+| Adivinar el QR de otra mesa | Cada QR lleva una clave aleatoria de 128 bits; la de una mesa no sirve para otra. 30 intentos con QR malos por conexión cada 15 minutos. Desde el wifi del local (si se han puesto sus IP en Preferencias) estos límites por conexión no se aplican, porque todos los móviles comparten IP y uno solo dejaría a los demás sin pedir. |
 | Un QR robado o publicado | El encargado puede **cambiar el QR** de una mesa o de todas; los impresos dejan de valer. |
 | Alguien de otra mesa con el código | Código por mesa; el camarero puede apagar el QR de esa mesa o cambiar el código. |
 | Sesiones que se quedan abiertas | Caducan a las 5 horas, o a las 2 horas sin usarse, y al cerrar la mesa. Como mucho 30 móviles por mesa. |

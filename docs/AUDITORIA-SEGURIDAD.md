@@ -162,3 +162,58 @@ Severidad: **Crítica** (compromiso directo y fácil) · **Alta** (compromiso de
 - Las reservas apuntadas desde el panel siguen sin comprobar el aforo (decisión de diseño; ya estaba en el backlog).
 - Tests automáticos y CI: siguen sin existir; las pruebas de esta revisión se hicieron a mano con el servidor de PHP y Chromium.
 - Si algún tema incrusta otros servicios (por ejemplo, vídeos de YouTube), hay que añadir su dominio en `send_csp()`.
+
+---
+
+# Segunda revisión (5 de noviembre de 2026): Sala y cocina y pedidos por QR
+
+Desde la primera auditoría entraron tres módulos nuevos: **Sala y cocina** (#11), el **editor del plano** (#12) y los **pedidos por QR** desde la mesa (#13). Esta revisión se centra en ellos (`web/sala/`, `web/mesa/`, `web/lib/sala.php`, `web/lib/mesa.php`, `web/lib/qr.php`) y vuelve a pasar por lo demás. Además de leer el código, se arrancó la web en local (servidor de PHP con 16 procesos y SQLite) y se atacó con scripts: roles, fuerza bruta en paralelo, precios y platos manipulados, XSS en las notas, sesiones después de cerrar la mesa y cabeceras.
+
+| # | Comprobación | Antes | Severidad | Ahora |
+|---|---|---|---|---|
+| S1 | Bloqueo del código de la mesa | Cualquiera con una foto antigua del QR podía meter 12 códigos malos y dejar **esa mesa sin pedir por QR 15 minutos**, aunque el camarero cambiara el código. Además, mandando muchos a la vez se comprobaban más de 12 (14 con 16 a la vez) | **Media** | ✅ El intento se apunta antes de comprobarlo (`throttle_take()`); el bloqueo va con el código actual, «Cambiar el código» lo quita y el camarero ve el aviso |
+| S2 | Platos agotados | Se podía pedir desde el móvil un plato **quitado de la carta o agotado** mandando su número (la cocina lo recibía) | **Media** | ✅ Solo platos con `available = 1` (móvil y camarero) |
+| S3 | Cambios a la vez en un pedido | Leer-cambiar-guardar sin bloqueo: «llamar al camarero» desde el móvil podía deshacer un cambio de mesa hecho a la vez; un envío del móvil justo al cerrar la mesa podía quedar en un pedido ya cerrado y sin cobrar | Baja | ✅ `sala_order_mutate()` con bloqueo en BD para actualizar, cerrar, llamar y enviar |
+| S4 | Wifi compartido | Todos los móviles del wifi comparten IP: 30 QR falsos o 20 códigos malos de un solo cliente **bloqueaban los pedidos por QR de todo el local** | Baja | ✅ Sin límite por IP desde las redes del local (Preferencias → IP); 40 códigos por IP en el resto |
+| S5 | Versión de PHP | La cabecera `X-Powered-By` decía la versión exacta de PHP | Baja | ✅ Quitada (PHP y `.htaccess`) |
+| S6 | Roles de la sala | ✅ Cocina solo ve la cocina y marca «en preparación / listo»; el camarero no toca plano, preferencias ni QR (probado ruta por ruta: 403) | — | ✅ Sin cambios |
+| S7 | Sesiones de la sala y del móvil | ✅ Tokens de 256 bits, solo se guarda la huella, caducan; los del móvil mueren al cerrar la mesa o cambiar el código (probado: 401 tras cerrar y tras reabrir) | — | ✅ Sin cambios |
+| S8 | IDOR en los pedidos por QR | ✅ El móvil solo ve y pide en su pedido (la sesión lleva el pedido; un `id` en la petición se ignora) | — | ✅ Sin cambios |
+| S9 | Precios y platos inventados | ✅ Nombre, precio, pase y espera los pone el servidor; especiales solo de la lista del encargado; límites de cantidad | — | ✅ Sin cambios |
+| S10 | XSS | ✅ `sala.js` y `mesa.js` escapan con `esc()` todo lo que viene de clientes (notas, nombres); el QR es SVG generado en el servidor con la etiqueta escapada; CSP sin scripts en línea | — | ✅ Sin cambios |
+| S11 | Clave del QR | ✅ 128 bits, va en el `#` de la URL (no se envía al servidor ni en el Referer), cifrada en BD, se puede cambiar | — | ✅ Sin cambios |
+| S12 | SQL injection | ✅ Todo con sentencias preparadas también en los módulos nuevos | — | ✅ Sin cambios |
+
+## Pendiente / recomendaciones (segunda revisión)
+
+- **Bares con wifi:** poner la IP pública del local en Sala → Preferencias → «Solo desde el wifi». Así nadie pide desde casa y un cliente no puede bloquear a los demás.
+- El resto de límites de intentos (entrar al panel, a la sala y a la cuenta de cliente) siguen con «comprobar y luego apuntar»: con muchas peticiones a la vez se cuelan unos pocos intentos más. Con contraseñas de 8 o más caracteres no es explotable; si se quiere, se pueden pasar a `throttle_take()`.
+- Camareros y encargados ven las reservas (nombre y notas) de cualquier día en la sala. Es lo esperado para atender, pero si se quiere restringir habría que limitarlo a hoy y mañana.
+- Los tokens de la sala y del panel viven en `localStorage`: la CSP es lo que los protege; no añadir scripts en línea ni de otros dominios.
+- No se ha probado contra MySQL real ni contra la web desplegada (solo en local). Para escanear la web publicada hace falta su dirección y permiso del dueño.
+
+---
+
+# Tercera revisión (6 de noviembre de 2026): todo el proyecto, toma de nota y app de Windows
+
+Se repasa todo lo anterior y lo nuevo desde la segunda revisión: el **editor de sala** (#15), la **toma de nota** en el móvil (#16, aún sin fusionar) y la **app de Windows** para la red del local (rama `claude/app-escritorio-mesas`, aún sin PR). Esta rama parte de la de la segunda revisión (#14, sin fusionar), así que la incluye.
+
+| # | Comprobación | Antes | Severidad | Ahora |
+|---|---|---|---|---|
+| T1 | App de Windows: archivos privados por la red | `escritorio/router.php` bloquea `config.php`, `lib/`, `data/` y los `.sqlite` comparando la URL, pero en Windows la misma ruta se puede escribir de otras formas: `config.php.` o `config.php ` (Windows quita el punto o espacio final), `config.php::$DATA` (flujo de NTFS) o nombres cortos 8.3 (`RESTAU~1.SQL`). Ninguna coincide con la lista ni acaba en `.php`, así que `php -S` serviría el archivo tal cual: **la clave de cifrado de `config.php` o la base de datos entera**, a cualquiera del wifi. No se ha podido probar en Windows (solo en Linux) | **Alta** (si se confirma) | 🔧 Arreglo preparado para la rama de la app (no está en esta rama porque la app aún no está en `main`): rechaza `:`, `~` y puntos o espacios finales, y vuelve a comprobar con la ruta real del disco (`realpath`). Bloquea también los `.log` |
+| T2 | Fuerza bruta con peticiones a la vez | Entrar en el panel, en la sala o en la cuenta de cliente, y las contraseñas al cambiar email o borrar la cuenta, usaban «comprobar y luego apuntar». Probado con 30 intentos a la vez contra la sala: **se comprobaron 18 contraseñas** en vez de 10 | **Media** | ✅ Todos con `throttle_take()` (se apunta antes de comprobar). Mismo ataque: exactamente 10 |
+| T3 | Menús pedidos por QR | El móvil podía mandar varios platos del mismo apartado de un menú (p. ej. tres segundos y dos postres): **todos salían a cocina por el precio de un menú** | **Media** | ✅ Un plato por apartado (móvil y camarero), con prueba automática |
+| T4 | Bloqueo de los camareros desde el wifi | En la web publicada todos los móviles del local comparten IP: 10 contraseñas malas de un cliente del wifi **dejaban sin poder entrar en la sala a todos los camareros** 15 minutos | Baja | ✅ Si el local tiene puestas sus IP (Preferencias de la sala), el límite por IP sube a 60; sigue el de 20 por usuario |
+| T5 | App de Windows: sin cifrar en el wifi | El servidor del PC va por `http://`: contraseñas y sesiones de camareros y del encargado viajan sin cifrar por el wifi, que en un bar suele ser el mismo que usan los clientes para pedir por QR | **Media** | ⏳ Pendiente (ver recomendaciones) |
+| T6 | App de Windows: panel abierto al wifi | El panel completo (carta, ajustes, cuentas) se puede abrir desde cualquier móvil del wifi; solo lo protege la contraseña | Baja | ⏳ Pendiente (ver recomendaciones) |
+| T7 | Toma de nota (#16) | ✅ Todo lo que sale en pantalla pasa por `esc()`; el borrador va en `localStorage` del propio móvil y al enviarlo el servidor vuelve a poner nombres y precios | — | ✅ Sin cambios |
+| T8 | Editor de sala (#15) | ✅ El servidor limita y limpia todo (`sala_layout_clean()`): ids, tamaños, esquinas, nombres; solo el encargado guarda; control de versión para no pisar cambios | — | ✅ Sin cambios |
+| T9 | App de Windows: resto | ✅ `/local/` solo desde el propio PC; instalador sin administrador; PHP descargado con SHA-256; contraseña inicial por variable de entorno (no en la lista de procesos); `install.php` cerrado; firewall solo red local | — | ✅ Sin cambios |
+
+## Pendiente / recomendaciones (tercera revisión)
+
+- **Aplicar el arreglo T1 en la rama de la app** antes de dar el instalador a nadie, y probarlo en Windows: con la app arrancada, `http://127.0.0.1:8080/config.php.` y `http://127.0.0.1:8080/config.php::$DATA` tienen que dar 404.
+- **Sincronización de la app con la web:** no se ha revisado. El código está solo en el PC de desarrollo (no se ha subido a GitHub) y el PC no estaba conectado. Cuando se suba, revisar sobre todo la API de sincronización de la web (protegida con un usuario administrador): que no se pueda usar con una cuenta sin permisos, que los datos que sube la app se validen igual que los del panel y dónde guarda la app esa contraseña.
+- **T5:** lo ideal es un wifi para el personal y otro para los clientes, con el PC en el del personal y los QR desactivados o, si se quieren QR, servir la app con HTTPS (certificado propio del local). Mientras tanto, como mínimo, wifi con contraseña WPA2/WPA3 y no abierta.
+- **T6:** en la app de Windows se podría limitar el panel al propio PC (como `/local/`) o a una lista de IP del personal.
+- La regla del firewall vale en cualquier perfil de red (también «Público»): si el PC es un portátil que se conecta a otros wifis, quitar la regla o cerrar la app fuera del local.

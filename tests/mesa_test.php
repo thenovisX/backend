@@ -61,6 +61,19 @@ ok($s['order']['id'] === $o['id'], 'la sesión del móvil va con el pedido de la
 ok(str_contains(err(fn() => mesa_session(str_repeat('a', 64))), 'MesaAuthError'), 'un token inventado no vale');
 for ($i = 0; $i < 12; $i++) err(fn() => mesa_join(['k' => $k1, 'pin' => $wrong]));
 ok(str_contains(err(fn() => mesa_join(['k' => $k1, 'pin' => $o['pin']])), 'Demasiados'), 'tras muchos códigos malos se bloquea un rato (contra adivinarlo)');
+ok(mesa_order_qr($o['id'])['locked'] === true, 'el camarero ve que la mesa está bloqueada');
+$o = sala_order_update($u, ['id' => $o['id'], 'new_pin' => true]);
+ok(mesa_order_qr($o['id'])['locked'] === false && strlen(mesa_join(['k' => $k1, 'pin' => $o['pin']])['token']) === 64, 'al cambiar el código la mesa se desbloquea (quien la bloqueó a propósito no deja a la mesa sin pedir)');
+$j = mesa_join(['k' => $k2, 'pin' => $o['pin']]);
+$s = mesa_session($j['token']);
+reset_throttle();
+for ($i = 0; $i < 25; $i++) mesa_join(['k' => $k1, 'pin' => $o['pin']]);
+ok(!q('SELECT 1 FROM login_attempts')->fetch(), 'entrar con el código bueno no cuenta como intento');
+q('DELETE FROM sala_guests WHERE token <> ?', [$s['hash']]);
+sala_prefs_save(['qr_ips' => ['81.40.12.0/24']]);
+for ($i = 0; $i < 35; $i++) err(fn() => mesa_info(['k' => 't1.AAAAAAAAAAAAAAAAAAAAAA']));
+ok(mesa_info(['k' => $k1])['state'] === 'open', 'desde el wifi del local, los QR falsos de uno no bloquean a los demás móviles');
+sala_prefs_save(['qr_ips' => []]);
 reset_throttle();
 
 echo "Pedir desde el móvil\n";
@@ -79,9 +92,25 @@ ok(count($kt['tickets']) >= 1 && $kt['tickets'][0]['by'] === 'Móvil (QR)', 'lle
 ok(str_contains(err(fn() => mesa_send($s, ['items' => [['kind' => 'special', 'name' => 'Langosta', 'price' => 0.5]]])), 'carta'), 'no se pueden pedir platos inventados con precio libre');
 ok(str_contains(err(fn() => mesa_send($s, ['items' => [['kind' => 'dish', 'dish' => $dish['id'], 'qty' => 50]]])), 'demasiados'), 'límite de platos por envío');
 ok(str_contains(err(fn() => mesa_send($s, ['items' => [['kind' => 'dish', 'dish' => 999999]]])), 'carta'), 'un plato que no existe no entra');
+q('UPDATE dishes SET available = 0 WHERE id = ?', [$dish['id']]);
+ok(str_contains(err(fn() => mesa_send($s, ['items' => [['kind' => 'dish', 'dish' => $dish['id']]]])), 'agotado'), 'un plato agotado (quitado de la carta) no se puede pedir');
+q('UPDATE dishes SET available = 1 WHERE id = ?', [$dish['id']]);
+reset_throttle();
 for ($i = 0; $i < 6; $i++) err(fn() => mesa_send($s, ['items' => [['kind' => 'dish', 'dish' => $dish['id']]]]));
 ok(str_contains(err(fn() => mesa_send($s, ['items' => [['kind' => 'dish', 'dish' => $dish['id']]]])), 'seguidos'), 'límite de envíos por móvil');
 reset_throttle();
+
+echo "Menús desde el móvil\n";
+reset_throttle();
+menus_store([['id' => 'dia', 'on' => true, 'title' => 'Menú del día', 'price' => 12, 'days' => [], 'note' => '', 'courses' => [
+    ['name' => 'Primero', 'dishes' => [['name' => 'Sopa', 'extra' => 0, 'allergens' => []], ['name' => 'Ensalada', 'extra' => 0, 'allergens' => []]]],
+    ['name' => 'Segundo', 'dishes' => [['name' => 'Pescado', 'extra' => 0, 'allergens' => []], ['name' => 'Carne', 'extra' => 0, 'allergens' => []]]],
+]]]);
+q('DELETE FROM login_attempts');
+$dup = ['kind' => 'menu', 'menu' => 'dia', 'choices' => [['c' => 1, 'd' => 0], ['c' => 1, 'd' => 1], ['c' => 0, 'd' => 0]]];
+ok(str_contains(err(fn() => mesa_send($s, ['items' => [$dup]])), 'un plato de cada apartado'), 'no se piden dos segundos por el precio de un menú');
+$okm = ['kind' => 'menu', 'menu' => 'dia', 'choices' => [['c' => 0, 'd' => 1], ['c' => 1, 'd' => 0]]];
+ok(err(fn() => mesa_send($s, ['items' => [$okm]])) === '', 'un menú normal (un plato por apartado) sí entra');
 
 echo "Avisos al camarero\n";
 mesa_call($s, 'cuenta');

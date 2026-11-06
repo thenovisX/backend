@@ -25,4 +25,6 @@ RedirectMatch 403 ^/(.*/)?(lib|data)/
   Header always set Strict-Transport-Security "max-age=31536000" env=HTTPS
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Permissions-Policy "camera=(self), geolocation=(), microphone=()"
+  Header always unset X-Powered-By
+  Header unset X-Powered-By
 </IfModule>
